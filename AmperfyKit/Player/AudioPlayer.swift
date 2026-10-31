@@ -537,6 +537,17 @@ public class AudioPlayer: NSObject, BackendAudioPlayerNotifiable {
     guard !streamTitle.isEmpty else { return }
     guard streamTitle != lastRadioStreamTitle else { return }
 
+    // cassette (BUG-758): between songs some stations send their own name, often with a dangling
+    // separator ("The Current-"). That isn't a song: the line falls back to the station's own.
+    if Self.isStationName(streamTitle, radio: radio) {
+      lastRadioStreamTitle = streamTitle
+      if streamNowPlaying != nil {
+        streamNowPlaying = nil
+        notifyNowPlayingInfoChanged()
+      }
+      return
+    }
+
     let parsedInfo = parseStreamTitle(streamTitle)
     guard let parsedInfo, !parsedInfo.isEmpty else { return }
 
@@ -545,8 +556,20 @@ public class AudioPlayer: NSObject, BackendAudioPlayerNotifiable {
     notifyNowPlayingInfoChanged()
   }
 
+  /// The quotes and separators a stream title can be left with at either end ("The Current-", "- KEXP |").
+  private static let dangling = CharacterSet.whitespacesAndNewlines
+    .union(CharacterSet(charactersIn: "\"'-–—|·:"))
+
+  /// Whether a stream title is only the station's own name, once its dangling separators are gone.
+  static func isStationName(_ streamTitle: String, radio: Radio) -> Bool {
+    let squash = { (text: String) in text.lowercased().filter { $0.isLetter || $0.isNumber } }
+    let left = squash(streamTitle.trimmingCharacters(in: dangling))
+    let name = squash(radio.title)
+    return !left.isEmpty && left == name
+  }
+
   private func parseStreamTitle(_ streamTitle: String) -> RadioNowPlayingInfo? {
-    let cleaned = streamTitle.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+    let cleaned = streamTitle.trimmingCharacters(in: Self.dangling)
     let parts = cleaned.components(separatedBy: " - ")
     if parts.count >= 2 {
       let artist = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
