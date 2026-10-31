@@ -481,14 +481,19 @@ struct MadeForYouList: View {
   let mixes: [HomeManager.MadeForYouMix]
   let onOpen: (HomeManager.MadeForYouMix) -> ()
 
-  /// The playlist rows' picture and row (PlaylistTableCell: 70pt and its margins).
+  /// PlaylistTableCell's geometry exactly, so the two lists read as one: a 70pt picture 32pt in
+  /// (the cell's 16pt margin plus 16), the words 8pt after it, the system's disclosure chevron
+  /// 18pt from the edge, 88pt rows.
   static let artSide: CGFloat = 70
-  static let rowHeight: CGFloat = 86
+  static let rowHeight: CGFloat = 88
+  static let leading: CGFloat = 32
+  static let trailing: CGFloat = 18
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       CassetteHeadingText(shout: "MADE FOR YOU", answer: nil)
-        .padding(.horizontal, CassetteHeading.sideInset)
+        .padding(.leading, Self.leading)
+        .padding(.trailing, Self.trailing)
         .padding(.top, CassetteHeading.topSpacing)
         .padding(.bottom, CassetteHeading.bottomSpacing)
       ForEach(mixes, id: \.id) { mix in
@@ -501,7 +506,7 @@ struct MadeForYouList: View {
   }
 
   private func row(_ mix: HomeManager.MadeForYouMix) -> some View {
-    HStack(spacing: CassetteTheme.Spacing.md) {
+    HStack(spacing: 8) {
       MadeForYouArt(mix: mix, coverPaths: MoodDoorRow.coverPaths(of: mix), side: Self.artSide)
         .clipShape(RoundedRectangle(cornerRadius: CassetteRadius.small))
       VStack(alignment: .leading, spacing: 4) {
@@ -515,20 +520,22 @@ struct MadeForYouList: View {
           .lineLimit(1)
       }
       Spacer(minLength: 0)
-      Image(systemName: "chevron.right")
-        .font(.system(size: CassetteIconSize.row.rawValue, weight: .semibold))
-        .foregroundStyle(Color.cassette(.textTertiary))
+      // the system's disclosure chevron, as the playlist rows above draw it
+      Image(systemName: "chevron.forward")
+        .font(.system(size: 14, weight: .semibold))
+        .foregroundStyle(Color(uiColor: .tertiaryLabel))
     }
-    .padding(.horizontal, CassetteHeading.sideInset)
+    .padding(.leading, Self.leading)
+    .padding(.trailing, Self.trailing)
     .frame(height: Self.rowHeight)
     .contentShape(Rectangle())
   }
 
-  /// "25 Songs · 1h 32m", as the playlist rows above say it.
+  /// "25 songs · 92 min", as the playlist rows above say it (I-V6).
   static func info(_ mix: HomeManager.MadeForYouMix) -> String {
     let songs = OneTapPlay.playables(mix.songs)
     let seconds = songs.reduce(0) { $0 + $1.duration }
-    let count = "\(songs.count) \(songs.count == 1 ? "Song" : "Songs")"
-    return seconds > 0 ? "\(count) · \(seconds.asDurationShortString)" : count
+    let count = songs.count == 1 ? "1 song" : "\(songs.count) songs"
+    return seconds > 0 ? "\(count) · \(seconds.asRecordMinutes)" : count
   }
 }

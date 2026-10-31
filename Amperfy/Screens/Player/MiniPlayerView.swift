@@ -949,6 +949,8 @@ class MiniPlayerView: UIView {
     refreshNowPlayingTint()
     playerHandler?.refreshPlayButton(playButton)
     playerHandler?.refreshPrevNextButtons(previousButton: previousButton, nextButton: nextButton)
+    // a station: no Next here either (it changed station), as on the full player
+    nextButton.isHidden = appDelegate.player.currentlyPlaying?.isRadio == true
     playerHandler?.refreshDisplayPlaylistButton(displayPlaylistButton: playlistButton)
     playerHandler?.refreshRepeatButton(repeatButton: repeatButton)
     playerHandler?.refreshShuffleButton(shuffleButton: shuffleButton)

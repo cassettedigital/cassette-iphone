@@ -390,8 +390,18 @@ class TabBarVC: UITabBarController {
 
   public func push(vc: UIViewController) {
     guard let libraryGroup else { return }
-    libraryGroup.managingNavigationController?.pushViewController(vc, animated: true)
+    // Library first, then the screen on top of it. Pushed into a Library tab that hadn't been
+    // opened since launch, the screen became the tab's first and only screen: no back key, and
+    // tapping Library didn't lead home (the founder, 2026-10-31, from Now Playing's Go to Album).
+    let isLoaded = !(libraryGroup.managingNavigationController?.viewControllers.isEmpty ?? true)
     selectedTab = libraryGroup
+    if isLoaded {
+      libraryGroup.managingNavigationController?.pushViewController(vc, animated: true)
+    } else {
+      DispatchQueue.main.async {
+        libraryGroup.managingNavigationController?.pushViewController(vc, animated: true)
+      }
+    }
   }
 }
 

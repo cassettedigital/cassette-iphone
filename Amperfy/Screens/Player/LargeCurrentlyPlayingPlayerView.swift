@@ -484,10 +484,11 @@ class LargeCurrentlyPlayingPlayerView: UIView, UIGestureRecognizerDelegate {
       return
     }
     let info = RadioCatalog.shared.station(forStreamUrl: radio.url)
-    let name = info?.name ?? radio.title
-    let network = info?.sourceLabel
-    let line = [name, network == name ? nil : network].compactMap { $0 }.joined(separator: " · ")
-    stationLabel.attributedText = NSAttributedString.cassette(line, .kicker, color: .cassette(.textSecondary))
+    // the station's name and nothing else (the founder, 2026-10-31: the network and city were
+    // fodder for truncation), in ink lit by the cover like the sheet's other small words
+    let line = info?.name ?? radio.title
+    let ink = (rootView?.coverTint ?? .neutral).kickerInk(inkShare: 0.7)
+    stationLabel.attributedText = NSAttributedString.cassette(line, .kicker, color: ink)
     stationRow.accessibilityLabel = "Station: \(line)"
     stationMark.image = RadioMark.image(for: radio, side: 44) { [weak self] in
       self?.refreshStationRow()

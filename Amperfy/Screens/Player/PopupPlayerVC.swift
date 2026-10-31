@@ -66,6 +66,15 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
   /// AmbientBackdropModel: a new tint must not re-render the glow or the EQ panel that
   /// observe that model. `.neutral` until a cover is read, and for a track without one.
   var coverTint: CoverTint = .neutral
+  /// The look the sheet is showing (cover or Up Next), so a station can hold it on the cover.
+  var shownDisplayStyle: PlayerDisplayStyle?
+
+  /// What the sheet shows: the person's choice, except that a station has no Up Next to show
+  /// (the founder, 2026-10-31: no queue when we can't see what's coming), so it shows the cover
+  /// without changing the choice.
+  var effectiveDisplayStyle: PlayerDisplayStyle {
+    player.currentlyPlaying?.isRadio == true ? .large : appDelegate.storage.settings.user.playerDisplayStyle
+  }
 
   var currentlyPlayingTableCell: CurrentlyPlayingTableCell?
   var contextPrevQueueSectionHeader: ContextQueuePrevSectionHeader?
@@ -221,10 +230,8 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
     super.viewIsAppearing(animated)
     appDelegate.userStatistics.visited(.popupPlayer)
     becomeFirstResponder()
-    changeDisplayStyleVisually(
-      to: appDelegate.storage.settings.user.playerDisplayStyle,
-      animated: false
-    )
+    changeDisplayStyleVisually(to: effectiveDisplayStyle, animated: false)
+    shownDisplayStyle = effectiveDisplayStyle
     reloadData()
     scrollToCurrentlyPlayingRow()
     controlView?.refreshView()

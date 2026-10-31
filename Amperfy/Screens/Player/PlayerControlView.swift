@@ -396,6 +396,13 @@ class PlayerControlView: UIView {
     )
     playerHandler?.refreshPrevNextButtons(previousButton: previousButton, nextButton: nextButton)
     playerHandler?.refreshDisplayPlaylistButton(displayPlaylistButton: displayPlaylistButton)
+    // A station: no Previous or Next (they flipped to the next station, easy to hit by
+    // accident and hard to read) and no Up Next, since nothing ahead is known (the founder,
+    // 2026-10-31). Stop sits alone.
+    let isStation = player.currentlyPlaying?.isRadio == true
+    previousButton.isHidden = isStation
+    nextButton.isHidden = isStation
+    displayPlaylistButton.isHidden = isStation
     refreshPlayerModeChangeButton()
   }
 

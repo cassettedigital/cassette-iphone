@@ -25,6 +25,11 @@ import UIKit
 
 extension PopupPlayerVC {
   func refresh() {
+    // a station starting or ending moves the sheet between its cover and the person's choice
+    if let shown = shownDisplayStyle, shown != effectiveDisplayStyle {
+      changeDisplayStyleVisually(to: effectiveDisplayStyle, animated: true)
+      shownDisplayStyle = effectiveDisplayStyle
+    }
     refreshContextQueueSectionHeader()
     refreshUserQueueSectionHeader()
     refreshCellMasks()

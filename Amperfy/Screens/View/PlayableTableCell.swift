@@ -699,14 +699,16 @@ class PlayableTableCell: BasicTableCell {
       configureTrackNumberLabel()
     }
     applyRankLayout()
-    entityImage.display(
-      theme: appDelegate.storage.settings.accounts.getSetting(playable.account?.info).read
-        .themePreference,
-      container: playable
-    )
-    // A station in a list (Up Next on the radio): its own mark, never an empty square (BUG-751).
+    // A station in a list: its own mark, never an empty square (BUG-751). Only the mark: the
+    // generic artwork load finishes later and painted its empty placeholder over it.
     if let radio = playable.asRadio {
       entityImage.display(image: RadioMark.image(for: radio, side: 96).image)
+    } else {
+      entityImage.display(
+        theme: appDelegate.storage.settings.accounts.getSetting(playable.account?.info).read
+          .themePreference,
+        container: playable
+      )
     }
     configurePlayIndicator(playable: playable)
 
