@@ -157,6 +157,13 @@ class LoginVC: UIViewController {
         }
         return
       }
+      // Cancel on the pairing page comes back as error=cancelled (BUG-642): as quiet as the
+      // sheet's own Cancel.
+      if let url = callbackURL,
+         URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+         .contains(where: { $0.name == "error" && $0.value == "cancelled" }) == true {
+        return
+      }
       guard let url = callbackURL,
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
             let tokenItem = components.queryItems?.first(where: { $0.name == "token" }),

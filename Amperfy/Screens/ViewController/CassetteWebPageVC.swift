@@ -8,9 +8,14 @@
 //  in Swift: whatever the site's pages become, this screen shows.
 //
 //  - Our screen, our back button: the page is Apple's web engine (WKWebView) inside an
-//    ordinary pushed screen. The web view says "CassetteApp/2" in its user agent, and the
+//    ordinary pushed screen. The web view says "CassetteApp/3" in its user agent, and the
 //    site then hides its own menus, footer and breadcrumb (apps/cassette/src/lib/
 //    app-surface.ts).
+//  - One page per screen (BUG-640): a link to another page of the site opens it as a new
+//    pushed screen, so the back button and the edge swipe both go back one page. The page
+//    hands the address over ("open", from CassetteApp/3); an album or artist the person
+//    owns opens from their library instead (RecordOpener). The homepage is the website's
+//    pitch, so a way out to it steps back a screen (BUG-641).
 //  - Previews (the founder, 2026-10-29, Q11): an album's song previews play here with the
 //    video on screen, in the page's own player. A preview starting tells this screen
 //    ("preview-playing"), which pauses the phone's music; leaving the page, locking the
@@ -19,11 +24,10 @@
 //  - Signed in: the first request goes through the site's /api/app-session with the phone's
 //    sign-in, which answers with a site session for this web view only (never Safari's) and
 //    a redirect to the page. Until that route is deployed, the page opens signed out.
-//  - Other sites (a station's home page, a store, checkout) open in Safari; pages on
-//    cassette.digital stay here.
+//  - Other sites (a station's home page, a store, checkout) open in Safari.
 //
 //  RecordOpener decides what a record tap shows: the person's own copy from their library
-//  when they have it, else this page.
+//  when they have it, else this page. A page's own album links go through it too.
 //
 
 import AmperfyKit
@@ -54,6 +58,7 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
   private let spinner = UIActivityIndicatorView(style: .medium)
   private var titleObservation: NSKeyValueObservation?
   private var triedSignedIn = false
+  private var shown = false
 
   /// - Parameters:
   ///   - path: a page on the site ("/album/tim").
@@ -64,7 +69,7 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
     self.placeholder = placeholder
     let config = WKWebViewConfiguration()
     config.websiteDataStore = .default()
-    config.applicationNameForUserAgent = "CassetteApp/2"
+    config.applicationNameForUserAgent = "CassetteApp/3"
     config.allowsInlineMediaPlayback = true
     config.mediaTypesRequiringUserActionForPlayback = .all
     // the preview's video stays in the page, never floating over the rest of the app
@@ -90,7 +95,8 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
     webView.isOpaque = false
     webView.backgroundColor = .backgroundColor
     webView.scrollView.backgroundColor = .backgroundColor
-    webView.allowsBackForwardNavigationGestures = true
+    // Each page is its own screen, so the edge swipe is the screen's, the same step as the back button.
+    webView.allowsBackForwardNavigationGestures = false
     webView.alpha = 0
     #if DEBUG
       webView.isInspectable = true
@@ -154,10 +160,64 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
 
   // MARK: Previews
 
-  /// The page said a preview started (lib/app-surface tellApp): the phone's music pauses.
+  /// What the page tells the app (lib/app-surface tellApp): a preview started, which pauses the
+  /// phone's music, or a link on it leads to another page of the site (openInApp).
   fileprivate func pageSaid(_ body: Any) {
-    guard (body as? [String: Any])?["type"] as? String == "preview-playing" else { return }
-    if appDelegate.player.isPlaying { appDelegate.player.pause() }
+    guard let message = body as? [String: Any] else { return }
+    switch message["type"] as? String {
+    case "preview-playing":
+      if appDelegate.player.isPlaying { appDelegate.player.pause() }
+    case "open":
+      if let path = message["path"] as? String { open(path: path, name: message["name"] as? String) }
+    default:
+      break
+    }
+  }
+
+  // MARK: Other pages
+
+  /// Another page of the site, as its own screen (BUG-640): an album the person owns from their
+  /// library, else its page (RecordOpener); an artist in their library by the name the link
+  /// shows, else their page; any other page here again. The homepage steps back (BUG-641).
+  private func open(path: String, name: String?) {
+    guard path.hasPrefix("/"), !path.hasPrefix("//"),
+          let parts = URLComponents(string: path) else { return }
+    let segments = parts.path.split(separator: "/").map(String.init)
+    if segments.isEmpty { leave(); return }
+    let push: (UIViewController) -> () = { [weak self] vc in
+      self?.navigationController?.pushViewController(vc, animated: true)
+    }
+    if segments.count == 2, let account = activeAccount {
+      if segments[0] == "album" {
+        RecordOpener.open(albumSlug: segments[1], title: nil, placeholder: nil, account: account, show: push)
+        return
+      }
+      if segments[0] == "artist", let name, !name.isEmpty,
+         let artist = appDelegate.storage.main.library.getArtistByExactName(for: account, name: name) {
+        push(AppStoryboard.Main.segueToArtistDetail(account: account, artist: artist))
+        return
+      }
+    }
+    push(CassetteWebPageVC(path: path, title: nil, placeholder: nil))
+  }
+
+  /// Back a screen, when this one is on top of another.
+  private func leave() {
+    guard let nav = navigationController, nav.topViewController === self,
+          nav.viewControllers.count > 1 else { return }
+    nav.popViewController(animated: true)
+  }
+
+  private var activeAccount: Account? {
+    guard let info = appDelegate.storage.settings.accounts.active else { return nil }
+    return appDelegate.storage.main.library.getAccount(info: info)
+  }
+
+  /// A site address as the path this screen opens ("/album/kid-a?x=1"), still percent-encoded.
+  private static func pagePath(_ url: URL) -> String {
+    let parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    let path = parts?.percentEncodedPath ?? url.path
+    return parts?.percentEncodedQuery.map { "\(path)?\($0)" } ?? path
   }
 
   /// Stops the page's preview: leaving the page, locking the phone, the phone's music starting.
@@ -213,7 +273,23 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
   ) async
     -> WKNavigationActionPolicy {
     let url = navigationAction.request.url
-    if url?.scheme == "about" || Self.isSite(url) { return .allow }
+    if url?.scheme == "about" { return .allow }
+    if let url, Self.isSite(url) {
+      guard navigationAction.targetFrame?.isMainFrame == true else { return .allow }
+      // The homepage is the website's pitch, not a screen in the app: a way out to it, or a
+      // sign-in pass that falls back to it, steps back instead (BUG-641).
+      if url.path.isEmpty || url.path == "/" {
+        leave()
+        return .cancel
+      }
+      // A tap on a link to another page that loads it whole (before the page's script is up
+      // to hand it over): its own screen too.
+      if shown, navigationAction.navigationType == .linkActivated, url.path != webView.url?.path {
+        open(path: Self.pagePath(url), name: nil)
+        return .cancel
+      }
+      return .allow
+    }
     // Another site (a station's home page, a store, checkout): Safari.
     if let url, ["http", "https", "mailto", "tel"].contains(url.scheme ?? "") {
       await UIApplication.shared.open(url)
@@ -274,6 +350,7 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
   }
 
   private func reveal() {
+    shown = true
     contentUnavailableConfiguration = nil
     guard webView.alpha < 1 else { return }
     spinner.stopAnimating()
