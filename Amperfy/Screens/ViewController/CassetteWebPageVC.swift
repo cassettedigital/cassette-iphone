@@ -71,7 +71,9 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
     self.placeholder = placeholder
     let config = WKWebViewConfiguration()
     config.websiteDataStore = .default()
-    config.applicationNameForUserAgent = "CassetteApp/3"
+    // 4 (2026-10-31): the app follows light or dark, so the site stops holding its pages dark
+    // (app-surface.ts DARK_UNTIL_APP_VERSION); the web view takes the app's appearance.
+    config.applicationNameForUserAgent = "CassetteApp/4"
     config.allowsInlineMediaPlayback = true
     config.mediaTypesRequiringUserActionForPlayback = .all
     // the preview's video stays in the page, never floating over the rest of the app

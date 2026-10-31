@@ -158,7 +158,9 @@ final class DeepDiveCardCell: BasicCollectionCell {
     }
     let pixel = 1.0 / max(traitCollection.displayScale, 1.0)
     cardView.layer.borderWidth = pixel
-    cardView.layer.borderColor = UIColor.cassette(.textPrimary).withAlphaComponent(0.06).cgColor
+    cardView.cassetteOnAppearanceChange {
+      $0.layer.borderColor = UIColor.cassette(.textPrimary).withAlphaComponent(0.06).cgColor
+    }
     accessibilityLabel = [album.name, album.artist?.name].compactMap { $0 }.joined(separator: ", ")
     playButton.accessibilityLabel = "Play \(album.name)"
   }

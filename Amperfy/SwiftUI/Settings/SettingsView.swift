@@ -163,6 +163,14 @@ struct SettingsView: View {
       return phone.albums.isEmpty ? "nothing yet" : DeviceFormat.albums(phone.albums.count)
     }
 
+    private var appearanceValue: String {
+      switch settings.appearanceMode {
+      case .light: return "Light"
+      case .dark: return "Dark"
+      default: return "Auto"
+      }
+    }
+
     private var equalizerValue: String {
       settings.isEqualizerEnabled ? settings.activeEqualizerSetting.name : "Off"
     }
@@ -203,6 +211,18 @@ struct SettingsView: View {
         RootLink("Equalizer", value: equalizerValue) {
           EqualizerSettingsView()
         }
+        // Light or dark, this phone only (the founder, 2026-10-29: Auto by default, with Light
+        // and Dark; I-T1). A menu in the row, as Apple's own Appearance choices are.
+        Menu {
+          Picker("Appearance", selection: $settings.appearanceMode) {
+            Text("Auto").tag(UIUserInterfaceStyle.unspecified)
+            Text("Light").tag(UIUserInterfaceStyle.light)
+            Text("Dark").tag(UIUserInterfaceStyle.dark)
+          }
+        } label: {
+          RootRowLabel(title: "Appearance", value: appearanceValue)
+        }
+        .buttonStyle(.plain)
       }
 
       Section {

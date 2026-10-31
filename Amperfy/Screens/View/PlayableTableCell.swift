@@ -704,6 +704,10 @@ class PlayableTableCell: BasicTableCell {
         .themePreference,
       container: playable
     )
+    // A station in a list (Up Next on the radio): its own mark, never an empty square (BUG-751).
+    if let radio = playable.asRadio {
+      entityImage.display(image: RadioMark.image(for: radio, side: 96).image)
+    }
     configurePlayIndicator(playable: playable)
 
     if displayMode == .selection {

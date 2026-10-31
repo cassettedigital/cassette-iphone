@@ -70,7 +70,7 @@ class NewPlaylistTableHeader: UIView {
       )
       nameTextField.layer.cornerRadius = CassetteTheme.Radius.md
       nameTextField.layer.borderWidth = 1.0 / max(traitCollection.displayScale, 1.0)
-      nameTextField.layer.borderColor = UIColor.cassette(.hairline).cgColor
+      nameTextField.cassetteOnAppearanceChange { $0.layer.borderColor = UIColor.cassette(.hairline).cgColor }
       let inset = UIView(frame: CGRect(x: 0, y: 0, width: 12, height: 1))
       nameTextField.leftView = inset
       nameTextField.leftViewMode = .always

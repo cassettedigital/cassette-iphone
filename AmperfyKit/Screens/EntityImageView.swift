@@ -177,6 +177,15 @@ open class EntityImageView: UIView {
     )
   }
 
+  /// A picture the caller made (a station's mark): one image, nothing behind it.
+  public func display(image: UIImage, cornerRadius: CornerRadius = .small) {
+    if case .circle = shape { applyShape() } else { shape = .rounded(cornerRadius) }
+    hidePlaylistCover()
+    quadImages.forEach { $0.isHidden = true }
+    singleImage.isHidden = false
+    singleImage.display(image: image)
+  }
+
   private func loadRemoteCover(
     _ url: URL,
     playlistId: String,

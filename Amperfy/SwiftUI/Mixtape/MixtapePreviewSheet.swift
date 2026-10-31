@@ -277,7 +277,6 @@ extension UIViewController {
     }
     let host = UIHostingController(rootView: sheet)
     host.view.backgroundColor = UIColor(Color.cassette(.surfaceBase))
-    host.overrideUserInterfaceStyle = .dark
     if let sheetController = host.sheetPresentationController {
       sheetController.detents = [.large()]
       sheetController.prefersGrabberVisible = true

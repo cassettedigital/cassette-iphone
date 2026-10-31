@@ -34,7 +34,7 @@ extension UITextField {
     clipsToBounds = true
     layer.cornerRadius = 5
     layer.borderWidth = CGFloat(0.5)
-    layer.borderColor = UIColor.cassette(.hairline).cgColor
+    cassetteOnAppearanceChange { $0.layer.borderColor = UIColor.cassette(.hairline).cgColor }
 
     borderStyle = .roundedRect
     // cassette Patch 032: login form input reads in SF Pro Text 15pt

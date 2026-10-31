@@ -740,7 +740,7 @@ final class RadioStationCell: UITableViewCell {
     art.clipsToBounds = true
     art.backgroundColor = CassetteTheme.UIColors.bg3
     art.layer.borderWidth = 1
-    art.layer.borderColor = CassetteTheme.UIColors.ink4.cgColor
+    art.cassetteOnAppearanceChange { $0.layer.borderColor = CassetteTheme.UIColors.ink4.cgColor }
 
     initials.font = UIFont.cassette(.rowTitle)
     initials.textColor = CassetteTheme.UIColors.ink

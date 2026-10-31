@@ -316,7 +316,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // — nav back chevrons, edit buttons, refresh spinners, switches, etc. —
     // inherits ink via the window + UIView.appearance() cascade.
     window?.tintColor = UIColor.cassette(.textPrimary)
-    window?.overrideUserInterfaceStyle = .dark
+    window?.overrideUserInterfaceStyle = storage.settings.user.appearanceMode
     window?.backgroundColor = UIColor.cassette(.surfaceBase)
 
     guard let activeAccountInfo = appDelegate.storage.settings.accounts.active else {
@@ -434,22 +434,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     )
   }
 
+  /// Light or dark (2026-10-31, I-T1; the founder, 2026-10-29: Auto by default, with Light,
+  /// Dark and Auto per device). `.unspecified` follows the phone. Was Patch 015's dark-only pin.
   func setAppAppearanceMode(style: UIUserInterfaceStyle) {
-    // cassette Patch 015: Cassette is a dark-only product. Honour the call
-    // site signature for upstream compatibility but always force `.dark` so
-    // the warm-paper palette never shows through on light-mode devices.
-    let forced: UIUserInterfaceStyle = .dark
-    if #available(iOS 13.0, *) {
-      UIApplication.shared.connectedScenes
-        .forEach {
-          if let windowScene = $0 as? UIWindowScene {
-            windowScene.windows.forEach { window in
-              window.overrideUserInterfaceStyle = forced
-              window.rootViewController?.overrideUserInterfaceStyle = forced
-            }
-          }
-        }
-    }
+    UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .forEach { window in
+        window.overrideUserInterfaceStyle = style
+        window.rootViewController?.overrideUserInterfaceStyle = .unspecified
+      }
   }
 
   func applicationWillResignActive(_ application: UIApplication) {

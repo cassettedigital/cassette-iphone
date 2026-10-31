@@ -24,7 +24,7 @@
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="Bcu-3y-fUS"/>
-                        <color key="backgroundColor" red="0.10980392156862745" green="0.098039215686274508" blue="0.074509803921568626" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" name="LaunchBackground"/>
                         <constraints>
                             <constraint firstItem="NMq-G9-xWp" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="RcG-4Z-mU8"/>
                             <constraint firstItem="NMq-G9-xWp" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="Log-gI-UGC"/>
@@ -39,5 +39,8 @@
     </scenes>
     <resources>
         <image name="LaunchLogo" width="2704" height="523"/>
+        <namedColor name="LaunchBackground">
+            <color red="0.95294117647058818" green="0.91764705882352937" blue="0.85882352941176465" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+        </namedColor>
     </resources>
 </document>

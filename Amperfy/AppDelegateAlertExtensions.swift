@@ -234,7 +234,8 @@ extension AppDelegate: AlertDisplayable {
     // backgroundColor is forwarded to it). Wave 3 (BRW-4): the frame carries the
     // severity, which the shared raised surface had lost: an error is framed in
     // the danger accent, anything else in the hairline.
-    banner.layer.borderColor = UIColor.cassette(CassetteBannerKind(logType: style).accent).cgColor
+    let accent = CassetteBannerKind(logType: style).accent
+    banner.cassetteOnAppearanceChange { $0.layer.borderColor = UIColor.cassette(accent).cgColor }
     banner.layer.borderWidth = CassetteBannerStyle.borderWidth
     // 4-second auto-dismiss; tap or swipe-up still dismiss instantly.
     banner.duration = 4

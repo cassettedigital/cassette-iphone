@@ -124,8 +124,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // This delegate does not imply the connecting scene or session are new (see `application:configurationForConnectingSceneSession` instead).
     guard let windowScene = scene as? UIWindowScene else { return }
     window = UIWindow(windowScene: windowScene)
-    // cassette Patch 015: pin every scene to dark mode + warm Cassette bg.
-    window?.overrideUserInterfaceStyle = .dark
+    // Light or dark as the person chose (Auto follows the phone, I-T1); the warm paper behind.
+    window?.overrideUserInterfaceStyle = appDelegate.storage.settings.user.appearanceMode
     window?.backgroundColor = UIColor.cassette(.surfaceBase)
     appDelegate.window = window
     var initialViewController: UIViewController?

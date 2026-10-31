@@ -48,21 +48,27 @@ public enum CassetteTheme {
 
   // MARK: UIKit colours
 
+  /// Each colour follows the screen's appearance (2026-10-31, I-T1): the dark value, else the
+  /// shared kit's light paper (`CassetteKitTokens.ColorLight`, the role each name stands for).
   public enum UIColors {
-    public static let bg = UIColor.cassetteHex(0x1C1914)
-    public static let bg2 = UIColor.cassetteHex(0x221F19)
-    public static let bg3 = UIColor.cassetteHex(0x2A261E)
-    public static let bg4 = UIColor.cassetteHex(0x161310)
+    private typealias D = CassetteKitTokens.Color
+    private typealias L = CassetteKitTokens.ColorLight
 
-    public static let ink = UIColor.cassetteHex(0xEDE4D0)
-    public static let ink2 = UIColor.cassetteHex(0xA89878)
-    public static let ink3 = UIColor.cassetteHex(0x9C8D70) // lifted 2026-10-29 to read 4.6:1 on every dark surface (Q19)
-    public static let ink4 = UIColor.cassetteHex(0x3E3628)
+    public static let bg = UIColor.cassetteFollowing(dark: D.surfaceBase, light: L.surfaceBase)
+    public static let bg2 = UIColor.cassetteFollowing(dark: D.surfaceRaised, light: L.surfaceRaised)
+    public static let bg3 = UIColor.cassetteFollowing(dark: D.surfaceElevated, light: L.surfaceElevated)
+    public static let bg4 = UIColor.cassetteFollowing(dark: D.surfaceSunken, light: L.surfaceSunken)
 
-    public static let orange = UIColor.cassetteHex(0xE87830)
-    public static let rust = UIColor.cassetteHex(0xB84830)
-    public static let sage = UIColor.cassetteHex(0x48987A)
-    public static let amber = UIColor.cassetteHex(0xD4A020)
+    public static let ink = UIColor.cassetteFollowing(dark: D.textPrimary, light: L.textPrimary)
+    public static let ink2 = UIColor.cassetteFollowing(dark: D.textSecondary, light: L.textSecondary)
+    // dark #9C8D70, lifted 2026-10-29 to read 4.6:1 on every dark surface (Q19)
+    public static let ink3 = UIColor.cassetteFollowing(dark: D.textTertiary, light: L.textTertiary)
+    public static let ink4 = UIColor.cassetteFollowing(dark: D.hairline, light: L.hairline)
+
+    public static let orange = UIColor.cassetteFollowing(dark: D.accentProgress, light: L.accentProgress)
+    public static let rust = UIColor.cassetteFollowing(dark: D.danger, light: L.danger)
+    public static let sage = UIColor.cassetteFollowing(dark: D.success, light: L.success)
+    public static let amber = UIColor.cassetteFollowing(dark: D.warning, light: L.warning)
   }
 
   // MARK: SwiftUI colours
@@ -193,6 +199,19 @@ public enum CassetteTheme {
 }
 
 // MARK: - UIColor hex helper
+
+@MainActor
+extension UIView {
+  /// Runs `update` now and whenever light or dark changes, with this view's traits as the
+  /// current ones, so a layer colour (a CGColor, which doesn't follow by itself) taken from a
+  /// colour that follows the appearance stays right (I-T1).
+  public func cassetteOnAppearanceChange(_ update: @escaping @MainActor (UIView) -> ()) {
+    traitCollection.performAsCurrent { update(self) }
+    registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: UIView, _: UITraitCollection) in
+      view.traitCollection.performAsCurrent { update(view) }
+    }
+  }
+}
 
 extension UIColor {
   /// Convenience initializer for the Cassette palette. Hex literal in

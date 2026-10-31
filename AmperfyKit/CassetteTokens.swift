@@ -70,25 +70,51 @@ public enum CassetteColorRole: CaseIterable, Sendable {
   /// Needs attention, not an error.
   case warning
 
+  /// The role's colour, following the screen's appearance: the dark value, else the shared kit's
+  /// light paper (I-T1). Built once per role.
   public var uiColor: UIColor {
-    let p = CassetteTheme.UIColors.self
-    switch self {
-    case .surfaceSunken: return p.bg4
-    case .surfaceBase: return p.bg
-    case .surfaceRaised: return p.bg2
-    case .surfaceElevated: return p.bg3
-    case .hairline: return p.ink4
-    case .textPrimary: return p.ink
-    case .textSecondary: return p.ink2
-    case .textTertiary: return p.ink3
-    case .textOnFill: return p.bg
-    case .fillSelected: return p.ink
-    case .accentProgress: return p.orange
-    case .accentAnswer: return p.orange
-    case .danger: return p.rust
-    case .success: return p.sage
-    case .warning: return p.amber
+    Self.colors[self]!
+  }
+
+  private static let colors: [CassetteColorRole: UIColor] = {
+    typealias D = CassetteKitTokens.Color
+    typealias L = CassetteKitTokens.ColorLight
+    func pair(_ role: CassetteColorRole) -> (UInt32, UInt32) {
+      switch role {
+      case .surfaceSunken: return (D.surfaceSunken, L.surfaceSunken)
+      case .surfaceBase: return (D.surfaceBase, L.surfaceBase)
+      case .surfaceRaised: return (D.surfaceRaised, L.surfaceRaised)
+      case .surfaceElevated: return (D.surfaceElevated, L.surfaceElevated)
+      case .hairline: return (D.hairline, L.hairline)
+      case .textPrimary: return (D.textPrimary, L.textPrimary)
+      case .textSecondary: return (D.textSecondary, L.textSecondary)
+      case .textTertiary: return (D.textTertiary, L.textTertiary)
+      case .textOnFill: return (D.textOnFill, L.textOnFill)
+      // the light paper's one primary dark, espresso (the founder, 2026-10-29)
+      case .fillSelected: return (D.fillSelected, L.fillSelected)
+      case .accentProgress: return (D.accentProgress, L.accentProgress)
+      case .accentAnswer: return (D.accentAnswer, L.accentAnswer)
+      case .danger: return (D.danger, L.danger)
+      case .success: return (D.success, L.success)
+      case .warning: return (D.warning, L.warning)
+      }
     }
+    var out = [CassetteColorRole: UIColor]()
+    for role in allCases {
+      let (dark, light) = pair(role)
+      out[role] = UIColor.cassetteFollowing(dark: dark, light: light)
+    }
+    return out
+  }()
+}
+
+extension UIColor {
+  /// A colour that follows the screen's appearance: `light` on the light paper, else `dark`
+  /// (an unspecified appearance reads dark, the app's look before it followed the phone).
+  public static func cassetteFollowing(dark: UInt32, light: UInt32) -> UIColor {
+    let darkColor = UIColor.cassetteHex(dark)
+    let lightColor = UIColor.cassetteHex(light)
+    return UIColor { $0.userInterfaceStyle == .light ? lightColor : darkColor }
   }
 }
 
@@ -188,19 +214,23 @@ public struct CoverTint: Sendable, Hashable {
   public let baseRGB: UInt32
   /// 0xRRGGBB, `brighten(base, 0.42)`, the mock's `--tint`.
   public let glowRGB: UInt32
-  /// 0xRRGGBB, `readable(base)`: at least 4.5:1 on #1C1914, the mock's `--tint-text`.
+  /// 0xRRGGBB, `readable(base)`: at least 4.5:1 on the dark surfaces, the mock's `--tint-text`.
   public let textRGB: UInt32
+  /// 0xRRGGBB, the same colour taken darker until it reads 4.5:1 on the light paper (I-T1).
+  public let textLightRGB: UInt32
 
   public init(baseRGB: UInt32) {
     let base = baseRGB & 0xFFFFFF
     self.baseRGB = base
     self.glowRGB = CoverTintMath.brighten(base, 0.42)
     self.textRGB = CoverTintMath.readable(base)
+    self.textLightRGB = CoverTintMath.readableOnLight(base)
   }
 
   public var base: UIColor { CoverTintMath.color(baseRGB) }
   public var glow: UIColor { CoverTintMath.color(glowRGB) }
-  public var text: UIColor { CoverTintMath.color(textRGB) }
+  /// The record's colour as text, following the screen's appearance.
+  public var text: UIColor { UIColor.cassetteFollowing(dark: textRGB, light: textLightRGB) }
   public var textColor: Color { Color(uiColor: text) }
 
   /// The glow mixed toward black in sRGB (`color-mix(in srgb, tint X%, black)`): a cover's
@@ -214,7 +244,9 @@ public struct CoverTint: Sendable, Hashable {
   /// lit card. 0.75 on the Resume card, 0.70 on Now Playing.
   public func kickerInk(inkShare: CGFloat = 0.75) -> UIColor {
     let k = max(0, min(1, inkShare))
-    return CoverTintMath.mix(CoverTintMath.ink, glowRGB, share: k)
+    let dark = CoverTintMath.mix(CoverTintMath.ink, glowRGB, share: k)
+    let light = CoverTintMath.mix(CassetteKitTokens.ColorLight.textPrimary, glowRGB, share: k)
+    return UIColor { $0.userInterfaceStyle == .light ? light : dark }
   }
 
   /// The only fallback: a warm neutral (glow #A17236, text #D4AE7D). Never orange.
@@ -222,7 +254,12 @@ public struct CoverTint: Sendable, Hashable {
 
   /// A destructive word (Sign Out, Delete) in the danger colour lifted to read 4.5:1 on every
   /// surface (I-T3: rust #B84830 is 3.34:1). The rust itself stays for fills and swipes.
-  public static var dangerText: UIColor { CoverTintMath.color(CoverTintMath.readable(0xB84830)) }
+  public static var dangerText: UIColor {
+    UIColor.cassetteFollowing(
+      dark: CoverTintMath.readable(CassetteKitTokens.Color.danger),
+      light: CoverTintMath.readableOnLight(CassetteKitTokens.ColorLight.danger)
+    )
+  }
 
   /// The colour of the record playing now (founder, 2026-10-21: the playing row's bars and
   /// the scrubbers speak in the record's colour, like its artist name, instead of brand
@@ -385,6 +422,23 @@ enum CoverTintMath {
   }
 
   /// The same hue, lifted to read as an accent on a near-black page.
+  /// The darkest light-paper surface a tint sits on (`surfaceSunken`, light).
+  static let lightPaper: UInt32 = CassetteKitTokens.ColorLight.surfaceSunken
+
+  /// The colour taken darker (HSL lightness down from its own, never up) until it reads 4.5:1
+  /// on the light paper.
+  static func readableOnLight(_ base: UInt32) -> UInt32 {
+    let (h, s0, l0) = hsl(base)
+    let s = s0 < 0.1 ? s0 : max(s0, 0.5)
+    var l = min(l0, 0.45)
+    while l >= 0.08 {
+      let c = hslToRGB(h, s, l)
+      if contrast(c, lightPaper) >= 4.5 { return c }
+      l -= 0.02
+    }
+    return hslToRGB(h, s, 0.08)
+  }
+
   static func brighten(_ rgb: UInt32, _ l: Double) -> UInt32 {
     let (h, s, l0) = hsl(rgb)
     return hslToRGB(h, s < 0.1 ? s : max(s, 0.5), max(l0, l))

@@ -49,7 +49,7 @@ class SettingsSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     window = UIWindow(windowScene: windowScene)
     window?.backgroundColor = .clear
-    window?.overrideUserInterfaceStyle = .dark
+    window?.overrideUserInterfaceStyle = (UIApplication.shared.delegate as? AppDelegate)?.storage.settings.user.appearanceMode ?? .unspecified
 
     window?.rootViewController = SettingsHostVC(isForOwnWindow: true)
     // This line is important to guarantee that the fullscreen option is not enabled after switching a tab

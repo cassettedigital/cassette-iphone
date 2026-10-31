@@ -275,7 +275,9 @@ final class ResumeCardCell: BasicCollectionCell {
     // the artwork (the album cards' highlight).
     let pixel = 1.0 / max(traitCollection.displayScale, 1.0)
     cardView.layer.borderWidth = pixel
-    cardView.layer.borderColor = UIColor.cassette(.textPrimary).withAlphaComponent(0.06).cgColor
+    cardView.cassetteOnAppearanceChange {
+      $0.layer.borderColor = UIColor.cassette(.textPrimary).withAlphaComponent(0.06).cgColor
+    }
     artworkView.layer.borderWidth = pixel
     artworkView.layer.borderColor = UIColor.cassette(.textPrimary)
       .withAlphaComponent(0.08).cgColor

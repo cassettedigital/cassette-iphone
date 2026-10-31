@@ -466,8 +466,9 @@ final class CoverGlowView: UIView {
 
   private func applyScrimColors() {
     guard let gradient = recipe.gradient else { return }
+    // resolved against this view's own light or dark (I-T1), not whatever is current
     scrimLayer.colors = gradient.stops.map {
-      UIColor.cassette($0.role).withAlphaComponent($0.alpha).cgColor
+      UIColor.cassette($0.role).resolvedColor(with: traitCollection).withAlphaComponent($0.alpha).cgColor
     }
     scrimLayer.locations = gradient.stops.map { NSNumber(value: Double($0.location)) }
     scrimLayer.startPoint = gradient.horizontal ? CGPoint(x: 0, y: 0.5) : CGPoint(x: 0.5, y: 0)
