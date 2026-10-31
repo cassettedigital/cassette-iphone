@@ -226,28 +226,27 @@ public class Album: AbstractLibraryEntity {
 extension Album: PlayableContainable {
   public var subtitle: String? { artist?.name }
   public var subsubtitle: String? { nil }
+  // cassette 2026-10-31 (I-V6): one way to write an album's facts, the album page's:
+  // "2007 · 8 songs · 32 min" (was "8 Songs · Year 2007 · Genre: Rock · 32m" here).
   public func infoDetails(for api: ServerApiType?, details: DetailInfoType) -> [String] {
     var infoContent = [String]()
+    if details.type == .long, year > 0 {
+      infoContent.append("\(year)")
+    }
     if songCount == 1 {
-      infoContent.append("1 Song")
+      infoContent.append("1 song")
     } else if songCount > 1 {
-      infoContent.append("\(songCount) Songs")
+      infoContent.append("\(songCount) songs")
     }
     if details.type == .short, details.isShowAlbumDuration, duration > 0 {
-      infoContent.append("\(duration.asDurationShortString)")
+      infoContent.append(duration.asRecordMinutes)
     }
     if details.type == .long {
-      if isCached {
-        infoContent.append("Cached")
-      }
-      if year > 0 {
-        infoContent.append("Year \(year)")
-      }
-      if let genre = genre {
-        infoContent.append("Genre: \(genre.name)")
-      }
       if duration > 0 {
-        infoContent.append("\(duration.asDurationShortString)")
+        infoContent.append(duration.asRecordMinutes)
+      }
+      if isCached {
+        infoContent.append("Downloaded")
       }
       if details.isShowDetailedInfo {
         infoContent.append("ID: \(!id.isEmpty ? id : "-")")

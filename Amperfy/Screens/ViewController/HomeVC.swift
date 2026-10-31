@@ -232,10 +232,12 @@ final class HomeVC: UICollectionViewController {
   private func triggerCassetteRefresh() {
     Task { @MainActor in
       setCheckingForUpdates(true)
-      await IntentExecutor.shared.convergeAndRefresh()
+      // A pull refreshes Home, nothing more (I-P2): it used to ask the computer to rescan its
+      // disk and re-upload this phone's whole inventory, up to a minute and a half. Settings
+      // keeps Resync Library for that.
       // One Home: a pull asks the cloud for Home now.
       await HomeStore.shared.refresh()
-      // convergeAndRefresh only reconciles the LIBRARY. Also fold in plays made on
+      // Also fold in plays made on
       // the user's OTHER devices so Recent catches up — otherwise cross-device
       // recency only lands on Home-appear / app-foreground, and a track just played
       // on Android won't surface here until then.
@@ -1132,7 +1134,8 @@ extension HomeVC {
               .playableDownloadManager
           )
         } catch {
-          self.appDelegate.eventLogger.report(topic: "Preview Sync", error: error)
+          // a preview that couldn't refresh keeps what it had; nothing to tell the person (I-S5)
+          self.appDelegate.eventLogger.report(topic: "Preview Sync", error: error, isBackground: true)
         }
         vc.refresh()
       }

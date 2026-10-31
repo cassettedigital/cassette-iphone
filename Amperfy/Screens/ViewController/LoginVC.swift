@@ -115,7 +115,7 @@ class LoginVC: UIViewController {
     config.baseForegroundColor = UIColor.cassette(.textTertiary)
     config.contentInsets = .zero
     config.attributedTitle = AttributedString(
-      "Having trouble? Use manual setup →",
+      "Having trouble? Use manual setup",
       attributes: AttributeContainer([
         .font: UIFont.cassette(.caption),
       ])
@@ -475,7 +475,7 @@ class LoginVC: UIViewController {
     config.baseForegroundColor = UIColor.cassette(.textSecondary)
     config.contentInsets = .zero
     config.attributedTitle = AttributedString(
-      "Need help setting up a server? →",
+      "Need help setting up a server?",
       attributes: AttributeContainer([
         .font: UIFont.cassette(.caption),
       ])
@@ -675,7 +675,7 @@ class LoginVC: UIViewController {
   func login() {
     guard let serverUrl = serverUrlTF.text?.trimmingCharacters(in: .whitespacesAndNewlines),
           !serverUrl.isEmpty else {
-      showErrorMsg(message: "No server URL given!")
+      showErrorMsg(message: "Enter your server's address.")
       return
     }
     guard serverUrl.isHyperTextProtocolProvided else {
@@ -683,11 +683,11 @@ class LoginVC: UIViewController {
       return
     }
     guard let username = usernameTF.text, !username.isEmpty else {
-      showErrorMsg(message: "No username given!")
+      showErrorMsg(message: "Enter your username.")
       return
     }
     guard let password = passwordTF.text, !password.isEmpty else {
-      showErrorMsg(message: "No password given!")
+      showErrorMsg(message: "Enter your password.")
       return
     }
 
@@ -696,7 +696,7 @@ class LoginVC: UIViewController {
 
     guard !appDelegate.storage.settings.accounts.allAccounts.contains(where: { $0 == accountInfo })
     else {
-      showErrorMsg(message: "Account already added!")
+      showErrorMsg(message: "That account is already on this phone.")
       return
     }
 

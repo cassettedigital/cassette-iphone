@@ -526,7 +526,7 @@ extension CarPlaySceneDelegate {
 
   private func makeMoodElement(_ tile: CarMoodTile) -> CPListImageRowItemRowElement {
     let art = moodArt(tile, slot: .shelf)
-    return CPListImageRowItemRowElement(image: art.image, title: art.title, subtitle: "Mix")
+    return CPListImageRowItemRowElement(image: art.image, title: art.title, subtitle: "Playlist")
   }
 
   private func createMoodRow(elements: [CPListImageRowItemRowElement]) -> CPListImageRowItem {
@@ -557,7 +557,7 @@ extension CarPlaySceneDelegate {
       let art = moodArt(tile, slot: .row)
       let item = CPListItem(
         text: art.title,
-        detailText: "Mix",
+        detailText: "Playlist",
         image: art.image,
         accessoryImage: nil,
         accessoryType: .none
@@ -667,13 +667,13 @@ extension CarPlaySceneDelegate {
   /// Nostalgia's mix as a tile: its records with its name across them (as the Made for You
   /// row draws a record playlist).
   fileprivate func makeReachMixElement(_ mix: HomeManager.MadeForYouMix) -> CPListImageRowItemRowElement {
-    CPListImageRowItemRowElement(image: reachMixArt(mix, slot: .shelf), title: mix.title, subtitle: "Mix")
+    CPListImageRowItemRowElement(image: reachMixArt(mix, slot: .shelf), title: mix.title, subtitle: "Playlist")
   }
 
   fileprivate func makeReachMixRow(_ mix: HomeManager.MadeForYouMix) -> CPListItem {
     let item = CPListItem(
       text: mix.title,
-      detailText: "Mix",
+      detailText: "Playlist",
       image: reachMixArt(mix, slot: .row),
       accessoryImage: nil,
       accessoryType: .none
@@ -735,10 +735,10 @@ extension CarPlaySceneDelegate {
       let cover = shelf.albums.first.flatMap {
         LibraryEntityImage.coverImage(libraryEntity: $0, artworkDisplayPreference: preference, useCache: false)
       }
-      let count = shelf.albums.count == 1 ? "1 record" : "\(shelf.albums.count) records"
+      let count = shelf.albums.count == 1 ? "1 album" : "\(shelf.albums.count) albums"
       let item = CPListItem(
         text: title,
-        detailText: shelf.onHome ? "On Home" : (shelf.mix == nil ? count : "A mix and \(count)"),
+        detailText: shelf.onHome ? "On Home" : (shelf.mix == nil ? count : "A playlist and \(count)"),
         image: style.artwork(cover, kind: .album, name: title, slot: .row),
         accessoryImage: nil,
         accessoryType: .disclosureIndicator

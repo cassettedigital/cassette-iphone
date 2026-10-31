@@ -48,11 +48,12 @@ struct SettingsRow<Content: View>: View {
     self.splitPercentage = min(max(splitPercentage, 0.0), 1.0)
   }
 
-  // cassette Patch 032: SwiftUI list rows read native in SF Pro Text 15pt,
-  // not Cassette Display. Per audit, this is the .body token (system font).
+  // cassette 2026-10-31 (I-S11): the row title in the Settings sheet's own face (`.rowTitle`,
+  // as its front page draws "Albums on this phone"), so the pages under it stop reading as
+  // another app. Was `.body`, the system font (Patch 032), from before the sheet was redrawn.
   private func titleText(_ value: String) -> some View {
     Text(value)
-      .font(.cassette(.body))
+      .font(.cassette(.rowTitle))
       .foregroundColor(Color.cassette(.textPrimary))
   }
 
@@ -109,7 +110,7 @@ struct SettingsButtonRow: View {
     var foregroundColor: Color? {
       switch self {
       case .normal: nil
-      case .destructive: Color.cassette(.danger)
+      case .destructive: Color(uiColor: CoverTint.dangerText)
       case .done: Color.cassette(.textPrimary)
       }
     }
@@ -135,6 +136,7 @@ struct SettingsButtonRow: View {
   var body: some View {
     Button(action: action) {
       Text(title)
+        .font(.cassette(.rowTitle))
     }.foregroundColor(actionType.foregroundColor)
   }
 }

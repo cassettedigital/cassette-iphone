@@ -106,7 +106,8 @@ struct SupportSettingsView: View {
     // Capture on the main actor, BEFORE flipping to `.sending`, so the snapshot is
     // of the app as the user left it. Device fields + breadcrumbs are read here
     // too, then handed to the off-main-actor uploader.
-    let screenshot = includeScreenshot ? Self.captureKeyWindowPNG() : nil
+    // The screen as it was when Settings opened (I-S6): the problem, not this form.
+    let screenshot = includeScreenshot ? (Self.screenBeforeSettings ?? Self.captureKeyWindowPNG()) : nil
     let device = UIDevice.current
     let deviceModel = device.model
     let osVersion = device.systemVersion
@@ -135,6 +136,16 @@ struct SupportSettingsView: View {
   /// screenshot. Uses `drawHierarchy(afterScreenUpdates: false)` so it captures
   /// what's already on screen without forcing a re-render. Returns nil if no key
   /// window is resolvable (never fatal — feedback still sends text-only).
+  /// What was on screen just before the Settings sheet opened, kept for Report a problem.
+  @MainActor
+  private(set) static var screenBeforeSettings: Data?
+
+  /// Called as the Settings sheet is about to open, so the report shows the problem.
+  @MainActor
+  static func rememberScreenBeforeSettings() {
+    screenBeforeSettings = captureKeyWindowPNG()
+  }
+
   @MainActor
   private static func captureKeyWindowPNG() -> Data? {
     let window = UIApplication.shared.connectedScenes

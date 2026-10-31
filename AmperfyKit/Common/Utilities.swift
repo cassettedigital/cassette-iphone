@@ -122,6 +122,11 @@ extension Int {
     return formatter.string(from: TimeInterval(self))!
   }
 
+  /// A record's length the way its page says it: whole minutes, "38 min", "65 min" (I-V6).
+  public var asRecordMinutes: String {
+    "\(Swift.max(1, Int((Double(self) / 60).rounded()))) min"
+  }
+
   public var asDurationString: String {
     let formatter = DateComponentsFormatter()
     formatter.allowedUnits = [.hour, .minute, .second]

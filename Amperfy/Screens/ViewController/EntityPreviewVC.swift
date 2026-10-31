@@ -522,7 +522,7 @@ class EntityPreviewActionBuilder {
 
       appDelegate.eventLogger.info(
         topic: "Instant Mix",
-        message: "Playing instant mix with \(allSongs.count) songs",
+        message: "Playing \(allSongs.count == 1 ? "1 song" : "\(allSongs.count) songs") like \(song.title)",
         displayPopup: true
       )
 
@@ -721,7 +721,7 @@ class EntityPreviewActionBuilder {
   }
 
   private func createShowAlbumAction() -> UIAction {
-    UIAction(title: "Show Album", image: .album) { action in
+    UIAction(title: "Go to Album", image: .album) { action in
       self.showAlbum()
     }
   }
@@ -748,7 +748,7 @@ class EntityPreviewActionBuilder {
 
   private func createShowArtistAction() -> UIAction {
     let title = ((entityContainer as? AbstractPlayable)?.isPodcastEpisode ?? false) ?
-      "Show Podcast" : "Show Artist"
+      "Go to Podcast" : "Go to Artist"
     let image = ((entityContainer as? AbstractPlayable)?.isPodcastEpisode ?? false) ? UIImage
       .squareArrow : UIImage.artist
     return UIAction(title: title, image: image) { action in

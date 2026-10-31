@@ -44,6 +44,12 @@ extension MarqueeLabel {
     if fadeLength != 10.0 {
       fadeLength = 10.0
     }
+    // cassette (I-M3): with Reduce Motion a long title stays put and ends in "…" instead of
+    // scrolling.
+    let still = UIAccessibility.isReduceMotionEnabled
+    if labelize != still {
+      labelize = still
+    }
   }
 }
 

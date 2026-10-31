@@ -128,7 +128,7 @@ struct AlternativeURLAddDialogView: View {
                 CassetteBannerView(message: errorMsg, kind: .error)
               }
               if isValidating {
-                ProgressView("Please wait...")
+                ProgressView()
               }
 
               VStack(spacing: 5) {

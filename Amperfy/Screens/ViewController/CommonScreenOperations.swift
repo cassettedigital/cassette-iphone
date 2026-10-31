@@ -180,6 +180,7 @@ extension UIViewController {
     #if targetEnvironment(macCatalyst)
       appDelegate.showSettings(sender: "")
     #else
+      SupportSettingsView.rememberScreenBeforeSettings()
       let nav = AppStoryboard.Main.segueToSettings()
       nav.modalPresentationStyle = .formSheet
       nav.sheetPresentationController?.prefersGrabberVisible = true

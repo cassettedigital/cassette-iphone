@@ -21,6 +21,7 @@
 
 import AmperfyKit
 import SwiftUI
+import UIKit
 
 // MARK: - SettingsView
 
@@ -205,6 +206,11 @@ struct SettingsView: View {
       }
 
       Section {
+        // The iPhone's help article, drawn by the site inside the app (I-S6).
+        RootLink("Help") {
+          CassetteWebPage(path: "/help/your-iphone", title: "Help")
+            .ignoresSafeArea(edges: .bottom)
+        }
         RootLink(NavigationTarget.support.displayName) {
           SupportSettingsView()
         }
@@ -352,10 +358,6 @@ struct SettingsView: View {
             Text(name)
               .font(.cassette(.sectionTitle))
               .foregroundStyle(Color.cassette(.textPrimary))
-              .lineLimit(1)
-            Text("Email, sign out")
-              .font(.cassette(.caption))
-              .foregroundStyle(Color.cassette(.textSecondary))
               .lineLimit(1)
           }
           Spacer(minLength: 8)
@@ -532,4 +534,18 @@ struct SettingsView_Previews: PreviewProvider {
   static var previews: some View {
     SettingsView()
   }
+}
+
+// MARK: - CassetteWebPage
+
+/// A page of the site inside Settings, through the app's own web screen (CassetteWebPageVC).
+struct CassetteWebPage: UIViewControllerRepresentable {
+  let path: String
+  let title: String
+
+  func makeUIViewController(context: Context) -> CassetteWebPageVC {
+    CassetteWebPageVC(path: path, title: title, placeholder: nil)
+  }
+
+  func updateUIViewController(_ uiViewController: CassetteWebPageVC, context: Context) {}
 }

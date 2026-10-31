@@ -188,6 +188,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   }
 
   func configureBackgroundFetch() {
+    // cassette (I-P3): no lyrics clock while lyrics are off (rides this launch-time setup).
+    PlayerLyricsClock.isWanted = Cassette.lyricsEnabled
     BGTaskScheduler.shared.register(
       forTaskWithIdentifier: Self.refreshTaskId,
       using: DispatchQueue.main
@@ -217,7 +219,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
     bgTask.setTaskCompleted(success: success)
     userStatistics.backgroundFetchPerformed(result: UIBackgroundFetchResult.newData)
-    scheduleAppRefresh()
+    // cassette (I-P3): not booked again; a refresh booked by an older build runs once and stops.
   }
 
   func scheduleAppRefresh() {

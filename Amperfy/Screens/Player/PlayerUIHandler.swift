@@ -113,6 +113,8 @@ class PlayerUIHandler: NSObject {
 
     button.setImage(buttonImg, for: UIControl.State.normal)
     button.configuration?.image = buttonImg
+    // cassette (I-M2): VoiceOver says what the key does now.
+    button.accessibilityLabel = player.isPlaying ? (player.isStopInsteadOfPause ? "Stop" : "Pause") : "Play"
   }
 
   func refreshSkipButtons(skipBackwardButton: UIButton, skipForwardButton: UIButton) {
@@ -176,6 +178,12 @@ class PlayerUIHandler: NSObject {
 
   func refreshRepeatButton(repeatButton: UIButton) {
     let isSelected = player.repeatMode != .off
+    repeatButton.accessibilityLabel = "Repeat"
+    repeatButton.accessibilityValue = switch player.repeatMode {
+    case .off: "Off"
+    case .all: "All"
+    case .single: "One song"
+    }
     var image: UIImage?
     switch player.repeatMode {
     case .off:
@@ -213,6 +221,8 @@ class PlayerUIHandler: NSObject {
   }
 
   func refreshShuffleButton(shuffleButton: UIButton) {
+    shuffleButton.accessibilityLabel = "Shuffle"
+    shuffleButton.accessibilityValue = player.isShuffle ? "On" : "Off"
     // phone-taste (live-state-orange): Shuffle on is live state, so its glyph lights orange
     // on a clear ground in every player. Off, the popup glyph is a quiet ink2; the mini
     // players keep today's ink so it matches the repeat toggle beside it.

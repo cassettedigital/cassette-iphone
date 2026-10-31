@@ -30,7 +30,7 @@ struct MoodDoorTile: View {
   let onTap: () -> ()
 
   private var color: Color {
-    Color(hexString: door.hexColor) ?? Color.cassette(.accentProgress)
+    Color(hexString: door.hexColor) ?? CoverTint.neutral.textColor // not orange: nothing is live here (I-T4)
   }
 
   var body: some View {

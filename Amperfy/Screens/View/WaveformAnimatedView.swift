@@ -91,6 +91,12 @@ final class WaveformAnimatedView: UIView {
   }
 
   func startAnimating() {
+    // cassette (I-M3): with Reduce Motion the bars hold still at mid height; the mark still
+    // says this one is playing.
+    guard !UIAccessibility.isReduceMotionEnabled else {
+      setBarHeights(to: Self.midBarHeight)
+      return
+    }
     guard displayLink == nil else { return }
     let link = CADisplayLink(target: self, selector: #selector(tick))
     link.add(to: .main, forMode: .common)

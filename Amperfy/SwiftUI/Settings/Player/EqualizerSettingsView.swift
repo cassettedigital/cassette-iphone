@@ -53,7 +53,7 @@ struct EqualizerSettingsView: View {
       SettingsList {
         SettingsSection(content: {
           SettingsCheckBoxRow(
-            title: "Enable Equalizer",
+            title: "Equalizer",
             isOn: Binding(
               get: { settings.isEqualizerEnabled },
               set: { isEnabled in
@@ -63,7 +63,7 @@ struct EqualizerSettingsView: View {
           )
 
           if settings.isEqualizerEnabled {
-            SettingsRow(title: "Active Equalizer") {
+            SettingsRow(title: "Preset") {
               Menu(settings.activeEqualizerSetting.description) {
                 Button(EqualizerSetting.off.description) {
                   settings.activeEqualizerSetting = EqualizerSetting.off
@@ -79,8 +79,8 @@ struct EqualizerSettingsView: View {
         })
 
         SettingsSection(content: {
-          SettingsRow(title: "Equalizer") {
-            Menu((eqSettingToEdit != nil) ? eqSettingNameSaved : "Select") {
+          SettingsRow(title: "Edit") {
+            Menu((eqSettingToEdit != nil) ? eqSettingNameSaved : "Choose a preset") {
               ForEach(settings.equalizerSettings, id: \.self) { eqSetting in
                 Button(eqSetting.description) {
                   eqSettingToEdit = eqSetting
@@ -89,8 +89,8 @@ struct EqualizerSettingsView: View {
                   eqSettingGains = eqSetting.gains.compactMap { CGFloat($0) }
                 }
               }
-              Button("Create new Equalizer") {
-                let newEQ = EqualizerSetting(name: "My new Equalizer")
+              Button("New Preset") {
+                let newEQ = EqualizerSetting(name: "New preset")
                 var curEqSetting = settings.equalizerSettings
                 curEqSetting.append(newEQ)
                 settings.equalizerSettings = curEqSetting
@@ -104,7 +104,7 @@ struct EqualizerSettingsView: View {
 
           if eqSettingToEdit != nil {
             SettingsRow(title: "Name") {
-              TextField("Equalizer Name", text: $eqSettingName)
+              TextField("Preset name", text: $eqSettingName)
                 .multilineTextAlignment(.trailing)
             }
 
@@ -140,10 +140,8 @@ struct EqualizerSettingsView: View {
               isShowDeleteAlert = true
             }.alert(isPresented: $isShowDeleteAlert) {
               Alert(
-                title: Text("Delete Equalizer"),
-                message: Text(
-                  "Are you sure to delete this equalizer?"
-                ),
+                title: Text("Delete \(eqSettingNameSaved)?"),
+                message: nil,
                 primaryButton: .destructive(Text("Delete")) {
                   guard let eqSettingToEdit else { return }
                   var curEqSetting = settings.equalizerSettings
@@ -162,7 +160,7 @@ struct EqualizerSettingsView: View {
             }
           }
 
-        }, header: "Equalizer Editor")
+        }, header: "Presets")
       }
     }
     .navigationTitle("Equalizer")

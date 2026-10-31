@@ -85,6 +85,12 @@ enum BackendAudioQueueType {
 
 // MARK: - BackendAudioPlayer
 
+/// cassette (I-P3): the app sets this from its lyrics switch at launch (Cassette.lyricsEnabled);
+/// off, no lyrics clock runs while music plays.
+public enum PlayerLyricsClock {
+  nonisolated(unsafe) public static var isWanted = true
+}
+
 @MainActor
 class BackendAudioPlayer: NSObject {
   private let getPlayableDownloaderCB: GetPlayableDownloadManagerCallback
@@ -241,6 +247,8 @@ class BackendAudioPlayer: NSObject {
         self.responder?.didElapsedTimeChange()
       }
     }
+    // cassette (I-P3): the ten-a-second lyrics clock only runs when the app shows lyrics.
+    guard PlayerLyricsClock.isWanted else { return }
     timerLyricsTimeInterval = Timer.scheduledTimer(
       withTimeInterval: updateLyricsTimeInterval.seconds,
       repeats: true
@@ -572,7 +580,7 @@ class BackendAudioPlayer: NSObject {
     eventLogger.info(
       topic: "Player Info",
       statusCode: .playerError,
-      message: "Content type \"\(contentType)\" of \"\(playableDisplayTitle)\" is not playable via Amperfy. Activating transcoding in Settings could resolve this issue.",
+      message: "\"\(playableDisplayTitle)\" can't play on this phone (its file type, \(contentType), isn't one it plays).",
       displayPopup: true
     )
     responder?.notifyItemPreparationFinished()
@@ -583,7 +591,7 @@ class BackendAudioPlayer: NSObject {
     eventLogger.info(
       topic: "Player Info",
       statusCode: .playerError,
-      message: "Radio \"\(playableDisplayTitle)\" has an invalid stream URL.",
+      message: "\(playableDisplayTitle) can't be tuned in right now.",
       displayPopup: true
     )
     responder?.notifyItemPreparationFinished()

@@ -301,7 +301,8 @@ private final class ShelfRowCell: UITableViewCell {
       color: CassetteTheme.UIColors.bg,
       uppercase: true
     )
-    label.backgroundColor = UIColor.cassette(.accentAnswer)
+    // ink, not orange: orange marks what's live (I-T4); being on Home is a fact
+    label.backgroundColor = UIColor.cassette(.fillSelected)
     label.layer.cornerRadius = 4
     label.clipsToBounds = true
     return label
@@ -360,8 +361,8 @@ private final class ShelfRowCell: UITableViewCell {
     if shelf.isDeepDive, let album = shelf.albums.first {
       lineLabel.text = [album.name, album.artist?.name].compactMap { $0 }.joined(separator: " · ")
     } else {
-      let records = shelf.albums.count == 1 ? "1 record" : "\(shelf.albums.count) records"
-      lineLabel.text = shelf.mix == nil ? records : "A mix and \(records)"
+      let records = shelf.albums.count == 1 ? "1 album" : "\(shelf.albums.count) albums"
+      lineLabel.text = shelf.mix == nil ? records : "A playlist and \(records)"
     }
     onHomeLabel.isHidden = !shelf.onHome
     let settings = appDelegate.storage.settings.accounts

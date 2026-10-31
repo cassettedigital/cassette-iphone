@@ -873,7 +873,7 @@ class GenericDetailTableHeader: UIView {
       var subtitleAttributes = AttributeContainer()
       subtitleAttributes.font = UIFont.cassette(lineIsLink ? .rowTitle : .cardSubtitle)
       subtitleAttributes.foregroundColor = lineIsLink
-        ? (coverTint?.text ?? UIColor.cassette(.accentProgress))
+        ? (coverTint ?? .neutral).text // the warm neutral, never orange, before the cover is read (I-T4)
         : UIColor.cassette(.textSecondary)
       if let lineText {
         subtitleButton.configuration?.attributedTitle = AttributedString(

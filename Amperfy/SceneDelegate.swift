@@ -359,10 +359,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       }
     }
     stopCassetteIntentPolling()
-    guard appDelegate.isNormalInteraction else {
-      return
-    }
-    appDelegate.scheduleAppRefresh()
+    // cassette 2026-10-31 (I-P3): no wake-up every 45 minutes. Amperfy booked a background
+    // refresh here that only fetched podcast episodes, which the app doesn't show; it woke the
+    // app in the background for nothing (BUG-753 is a run of background kills, not proven
+    // related).
   }
 
   func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {

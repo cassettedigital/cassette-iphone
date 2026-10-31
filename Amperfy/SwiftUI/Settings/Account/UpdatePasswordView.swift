@@ -67,7 +67,7 @@ struct UpdatePasswordView: View {
         }
         appDelegate.getMeta(activeAccountInfo).backendApi
           .provideCredentials(credentials: loginCredentials)
-        successMsg = "Password updated!"
+        successMsg = "Password updated"
       } catch {
         errorMsg = "Authentication failed! Password has not been updated."
       }
@@ -90,7 +90,7 @@ struct UpdatePasswordView: View {
                 CassetteBannerView(message: errorMsg, kind: .error)
               }
               if isValidating {
-                ProgressView("Please wait...")
+                ProgressView()
               }
 
               VStack(spacing: 5) {

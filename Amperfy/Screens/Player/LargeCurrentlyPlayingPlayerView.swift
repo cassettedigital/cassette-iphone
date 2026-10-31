@@ -350,7 +350,9 @@ class LargeCurrentlyPlayingPlayerView: UIView, UIGestureRecognizerDelegate {
     // lyrics mode while the feature is gated off. Feature stays wired in code.
     if Cassette.lyricsEnabled, appDelegate.storage.settings.user.isPlayerLyricsDisplayed {
       return .lyrics
-    } else if appDelegate.storage.settings.user.isPlayerVisualizerDisplayed {
+    } else if appDelegate.storage.settings.user.isPlayerVisualizerDisplayed,
+              !UIAccessibility.isReduceMotionEnabled {
+      // cassette (I-M3): the moving visualizer gives way to the cover under Reduce Motion.
       return .visualizer
     } else {
       return .artwork

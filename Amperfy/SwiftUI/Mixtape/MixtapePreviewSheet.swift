@@ -118,7 +118,7 @@ struct MixtapePreviewSheet: View {
   }
 
   private var artColor: Color {
-    mixtape.art.flatMap { Color(hexString: $0.color) } ?? Color.cassette(.accentProgress)
+    mixtape.art.flatMap { Color(hexString: $0.color) } ?? CoverTint.neutral.textColor // not orange: nothing is live here (I-T4)
   }
 
   var body: some View {

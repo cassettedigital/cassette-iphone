@@ -107,23 +107,8 @@ public class QuickActionsHandler {
         userInfo: nil
       ))
     }
-    if storage.settings.user.isOfflineMode {
-      quickActions.append(UIApplicationShortcutItem(
-        type: QuickActionType.onlineModeAction.rawValue,
-        localizedTitle: "Start in Online Mode",
-        localizedSubtitle: nil,
-        icon: UIApplicationShortcutIcon(systemImageName: AmperfyImage.onlineMode.systemName),
-        userInfo: nil
-      ))
-    } else {
-      quickActions.append(UIApplicationShortcutItem(
-        type: QuickActionType.offlineModeAction.rawValue,
-        localizedTitle: "Start in Offline Mode",
-        localizedSubtitle: nil,
-        icon: UIApplicationShortcutIcon(systemImageName: AmperfyImage.offlineMode.systemName),
-        userInfo: nil
-      ))
-    }
+    // cassette 2026-10-31 (I-S3): no "Start in Offline Mode" / "Online Mode" on the app icon:
+    // Amperfy's mode, cleared at every launch, with the same long-press as the only way back.
     application.shortcutItems = quickActions
   }
 

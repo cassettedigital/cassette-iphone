@@ -132,7 +132,7 @@ struct MadeForYouTile: View {
             .font(Font.cassette(.rowTitle))
             .foregroundStyle(Color.cassette(.textPrimary))
             .lineLimit(1)
-          Text("\(mix.songs.count) songs")
+          Text(mix.songs.count == 1 ? "1 song" : "\(mix.songs.count) songs")
             .font(Font.cassette(.cardSubtitle))
             .foregroundStyle(Color.cassette(.textSecondary))
             .lineLimit(1)

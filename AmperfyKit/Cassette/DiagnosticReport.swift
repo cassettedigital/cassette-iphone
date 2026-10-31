@@ -236,11 +236,13 @@ public struct DiagnosticCrashPayload {
   public let fingerprint: String?
   public let summary: JSONValue?
 
-  /// MetricKit encodes timestamps as `"yyyy-MM-dd HH:mm:ss"` (not ISO-8601).
+  /// MetricKit encodes timestamps as `"yyyy-MM-dd HH:mm:ss"` (not ISO-8601) in the phone's own
+  /// time zone, with no offset. Read as UTC they landed five hours early for a Central-time
+  /// phone (BUG-754: a 10:46 crash stored as 05:46).
   private static let metricKitTimestamp: DateFormatter = {
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
-    f.timeZone = TimeZone(identifier: "UTC")
+    f.timeZone = .current
     f.dateFormat = "yyyy-MM-dd HH:mm:ss"
     return f
   }()

@@ -51,17 +51,8 @@ struct AmperfyAppShortcuts: AppShortcutsProvider {
       shortTitle: "Flag a Moment",
       systemImageName: "flag.fill"
     )
-    AppShortcut(
-      intent: SwitchAccountIntent(),
-      phrases: [
-        "Switch account in \(.applicationName)",
-        "Switch to \(\.$account) in \(.applicationName)",
-        "Switch to \(\.$account) account in \(.applicationName)",
-        "Activate \(\.$account) account in \(.applicationName)",
-      ],
-      shortTitle: "Switch Account",
-      systemImageName: "person.circle.fill"
-    )
+    // cassette 2026-10-31 (I-S3): no "Switch Account": Amperfy's many-servers idea; a phone has
+    // one Cassette account. The intent stays for anything already built on it in Shortcuts.
     AppShortcut(
       intent: PlayRandomSongsIntent(),
       phrases: [

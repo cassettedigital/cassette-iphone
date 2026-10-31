@@ -220,6 +220,10 @@ public struct CoverTint: Sendable, Hashable {
   /// The only fallback: a warm neutral (glow #A17236, text #D4AE7D). Never orange.
   public static let neutral = CoverTint(baseRGB: 0x6B5A44)
 
+  /// A destructive word (Sign Out, Delete) in the danger colour lifted to read 4.5:1 on every
+  /// surface (I-T3: rust #B84830 is 3.34:1). The rust itself stays for fills and swipes.
+  public static var dangerText: UIColor { CoverTintMath.color(CoverTintMath.readable(0xB84830)) }
+
   /// The colour of the record playing now (founder, 2026-10-21: the playing row's bars and
   /// the scrubbers speak in the record's colour, like its artist name, instead of brand
   /// orange). Set by whoever reads the playing cover: the mini player on every track change
@@ -330,8 +334,13 @@ public struct CoverTint: Sendable, Hashable {
 /// exactly as hslToHex does, and readable() runs the same accumulating float loop as the
 /// JS, so a cover reads the same colour here as on the web mock.
 enum CoverTintMath {
-  /// The page the text tint must read on (#1C1914, `surfaceBase`).
+  /// The page (#1C1914, `surfaceBase`).
   static let page: UInt32 = 0x1C1914
+  /// What a lifted colour must read on: the lightest surface it sits on, the elevated card
+  /// (#2A261E, `surfaceElevated`), so it holds 4.5:1 on cards as well as the page (I-T5; it
+  /// was lifted against the page only, 3.87:1 on an elevated card). Lighter than the web mock
+  /// by a step on some covers.
+  static let readOn: UInt32 = 0x2A261E
   /// Ink (#EDE4D0, `textPrimary`), for kicker mixes.
   static let ink: UInt32 = 0xEDE4D0
 
@@ -403,7 +412,7 @@ enum CoverTintMath {
     var l = 0.66
     while l <= 0.92 {
       let c = brighten(base, l)
-      if contrast(c, page) >= 4.5 { return c }
+      if contrast(c, readOn) >= 4.5 { return c }
       l += 0.02
     }
     return brighten(base, 0.92)

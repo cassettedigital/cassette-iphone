@@ -446,7 +446,8 @@ class BasicTableViewController: KeyCommandTableViewController, ListScreenChrome 
             )
           }
         } catch {
-          self.appDelegate.eventLogger.report(topic: "Preview Sync", error: error)
+          // a preview that couldn't refresh keeps what it had; nothing to tell the person (I-S5)
+          self.appDelegate.eventLogger.report(topic: "Preview Sync", error: error, isBackground: true)
         }
         vc.refresh()
       }

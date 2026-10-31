@@ -79,7 +79,7 @@ public enum AuthenticationError: LocalizedError {
     case .notAbleToLogin:
       ret = "Couldn't sign in. Check your user name and password."
     case .invalidUrl:
-      ret = "Server URL is invalid!"
+      ret = "That server address isn't valid."
     case let .requestStatusError(message: message):
       ret = "Requesting server URL finished with status response error code '\(message)'!"
     case let .downloadError(message: message):

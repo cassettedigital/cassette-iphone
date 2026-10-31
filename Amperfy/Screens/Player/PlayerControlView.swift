@@ -130,6 +130,16 @@ class PlayerControlView: UIView {
 
   func prepare(toWorkOnRootView: PopupPlayerVC?) {
     rootView = toWorkOnRootView
+    // cassette (I-M2): every key on the sheet says what it does (none did).
+    previousButton.accessibilityLabel = "Previous"
+    nextButton.accessibilityLabel = "Next"
+    skipBackwardButton.accessibilityLabel = "Back 10 seconds"
+    skipForwardButton.accessibilityLabel = "Forward 10 seconds"
+    airplayButton.accessibilityLabel = "AirPlay"
+    displayPlaylistButton.accessibilityLabel = "Up Next"
+    playerModeButton.accessibilityLabel = "Music or podcasts"
+    volumeButton.accessibilityLabel = "Volume"
+    optionsButton.accessibilityLabel = "More"
 
     playerHandler = PlayerUIHandler(player: player, style: .popupPlayer)
 

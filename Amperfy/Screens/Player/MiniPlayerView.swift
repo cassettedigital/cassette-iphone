@@ -94,6 +94,10 @@ class MiniPlayerView: UIView {
   fileprivate lazy var titleLabel: UILabel = {
     let label = MarqueeLabel(frame: .zero)
     label.applyAmperfyStyle()
+    // cassette (I-M2): VoiceOver reaches Now Playing through the song's name: a double tap
+    // lands on the view's own tap, which opens the player.
+    label.accessibilityTraits.insert(.button)
+    label.accessibilityHint = "Opens Now Playing"
     label.textAlignment = .center
     label.backgroundColor = .clear
     label.numberOfLines = 1
@@ -224,8 +228,9 @@ class MiniPlayerView: UIView {
         UIImage
           .SymbolConfiguration(pointSize: PlayerUIHandler.playButtonImagePointSize)
       )
-    let button = UIButton(configuration: config)
+    let button = MiniPlayerKey(configuration: config)
     button.tintColor = UIColor.cassette(.textPrimary)
+    button.accessibilityLabel = "Play"
     button.addTarget(self, action: #selector(Self.playButtonPushed), for: .touchUpInside)
     return button
   }()
@@ -239,7 +244,8 @@ class MiniPlayerView: UIView {
   fileprivate lazy var previousButton: UIButton = {
     var config = UIButton.Configuration.plain()
     config.image = .backwardFill.withConfiguration(UIImage.SymbolConfiguration(scale: .large))
-    let button = UIButton(configuration: config)
+    let button = MiniPlayerKey(configuration: config)
+    button.accessibilityLabel = "Previous"
     button.tintColor = UIColor.cassette(.textPrimary)
     button.addTarget(self, action: #selector(Self.previousButtonPushed), for: .touchUpInside)
     return button
@@ -258,8 +264,9 @@ class MiniPlayerView: UIView {
   fileprivate lazy var nextButton: UIButton = {
     var config = UIButton.Configuration.plain()
     config.image = .forwardFill.withConfiguration(UIImage.SymbolConfiguration(scale: .large))
-    let button = UIButton(configuration: config)
+    let button = MiniPlayerKey(configuration: config)
     button.tintColor = UIColor.cassette(.textPrimary)
+    button.accessibilityLabel = "Next"
     button.addTarget(self, action: #selector(Self.nextButtonPushed), for: .touchUpInside)
     return button
   }()
@@ -1080,4 +1087,19 @@ extension MiniPlayerView: MusicPlayable {
   }
 
   func didPlaybackRateChange() {}
+}
+
+// MARK: - MiniPlayerKey
+
+/// cassette (I-M2): the mini player's 30pt keys answer a touch anywhere in a 44pt square, Apple's
+/// smallest target, without growing what's drawn (Play and Next sit 5pt apart, so their squares
+/// meet in the middle and each still gets the half nearest it).
+private final class MiniPlayerKey: UIButton {
+  private static let minimumHitSide: CGFloat = 44
+
+  override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+    let dx = max(0, (Self.minimumHitSide - bounds.width) / 2)
+    let dy = max(0, (Self.minimumHitSide - bounds.height) / 2)
+    return bounds.insetBy(dx: -dx, dy: -dy).contains(point)
+  }
 }

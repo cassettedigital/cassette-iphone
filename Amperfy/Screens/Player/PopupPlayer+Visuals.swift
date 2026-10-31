@@ -114,7 +114,7 @@ extension PopupPlayerVC {
            let live = player.currentRadioLive,
            let slug = live.albumSlug,
            let account = currentlyPlaying.account {
-          let title = live.albumTitle.map { "Go to \($0)" } ?? "Go to Album"
+          let title = "Go to Album"
           let art = player.currentRadioArtwork
           actions.insert(UIAction(title: title, image: CassetteIcon.album.uiImage) { [weak rootView] _ in
             MainActor.assumeIsolated {

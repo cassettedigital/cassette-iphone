@@ -786,16 +786,16 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
     var groups: [UIMenuElement] = []
     if let match = song.match {
       groups.append(UIMenu(options: .displayInline, children: [
-        UIAction(title: "Go to the Record", image: CassetteIcon.album.symbolImage) { [weak self] _ in
+        UIAction(title: "Go to Album", image: CassetteIcon.album.symbolImage) { [weak self] _ in
           MainActor.assumeIsolated { self?.openRecord(match) }
         },
-        UIAction(title: "Go to the Artist", image: CassetteIcon.artist.symbolImage) { [weak self] _ in
+        UIAction(title: "Go to Artist", image: CassetteIcon.artist.symbolImage) { [weak self] _ in
           MainActor.assumeIsolated { self?.openArtist(match) }
         },
       ]))
     }
     groups.append(UIMenu(options: .displayInline, children: [
-      UIAction(title: "Look for It on Cassette", image: CassetteIcon.search.symbolImage) { [weak self] _ in
+      UIAction(title: "Search Cassette", image: CassetteIcon.search.symbolImage) { [weak self] _ in
         MainActor.assumeIsolated { self?.lookFor("\(song.artist) \(song.title)") }
       },
       UIAction(title: "Copy Song and Artist", image: UIImage(systemName: "doc.on.doc")) { _ in
