@@ -258,6 +258,13 @@ private final class DetailCoverFanView: UIView {
 /// The header now self-sizes, owns no fixed frame constants, and the
 /// artwork is the first content of the scroll view.
 class GenericDetailTableHeader: UIView {
+  /// The page title's bottom edge in this view's coordinates (nil while it is hidden): the bar
+  /// and its small title arrive as this edge slides under the bar (DetailStickyHeaderSupport).
+  var titleBottom: CGFloat? {
+    guard !titleLabel.isHidden, titleLabel.superview != nil else { return nil }
+    return titleLabel.convert(titleLabel.bounds, to: self).maxY
+  }
+
   // MARK: Subviews
 
   let entityImage = EntityImageView(

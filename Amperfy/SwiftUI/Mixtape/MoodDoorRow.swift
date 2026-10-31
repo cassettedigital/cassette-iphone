@@ -470,3 +470,65 @@ enum LatelyCoverCache {
     return image
   }
 }
+
+// MARK: - MadeForYouList
+
+/// cassette 2026-10-31 (the founder: "They're playlists, they're just generated rather than
+/// curated"): the made-for-you playlists under the person's own in Library > Playlists, one row
+/// each in the playlist rows' shape (picture, name, songs and length), a tap opening the page
+/// Home's tile opens.
+struct MadeForYouList: View {
+  let mixes: [HomeManager.MadeForYouMix]
+  let onOpen: (HomeManager.MadeForYouMix) -> ()
+
+  /// The playlist rows' picture and row (PlaylistTableCell: 70pt and its margins).
+  static let artSide: CGFloat = 70
+  static let rowHeight: CGFloat = 86
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      CassetteHeadingText(shout: "MADE FOR YOU", answer: nil)
+        .padding(.horizontal, CassetteHeading.sideInset)
+        .padding(.top, CassetteHeading.topSpacing)
+        .padding(.bottom, CassetteHeading.bottomSpacing)
+      ForEach(mixes, id: \.id) { mix in
+        Button { onOpen(mix) } label: { row(mix) }
+          .buttonStyle(.plain)
+          .accessibilityLabel("\(mix.title), \(Self.info(mix))")
+      }
+    }
+    .padding(.bottom, CassetteTheme.Spacing.lg)
+  }
+
+  private func row(_ mix: HomeManager.MadeForYouMix) -> some View {
+    HStack(spacing: CassetteTheme.Spacing.md) {
+      MadeForYouArt(mix: mix, coverPaths: MoodDoorRow.coverPaths(of: mix), side: Self.artSide)
+        .clipShape(RoundedRectangle(cornerRadius: CassetteRadius.small))
+      VStack(alignment: .leading, spacing: 4) {
+        Text(mix.title)
+          .font(.cassette(.rowTitle))
+          .foregroundStyle(Color.cassette(.textPrimary))
+          .lineLimit(1)
+        Text(Self.info(mix))
+          .font(.cassette(.metadata))
+          .foregroundStyle(Color.cassette(.textSecondary))
+          .lineLimit(1)
+      }
+      Spacer(minLength: 0)
+      Image(systemName: "chevron.right")
+        .font(.system(size: CassetteIconSize.row.rawValue, weight: .semibold))
+        .foregroundStyle(Color.cassette(.textTertiary))
+    }
+    .padding(.horizontal, CassetteHeading.sideInset)
+    .frame(height: Self.rowHeight)
+    .contentShape(Rectangle())
+  }
+
+  /// "25 Songs · 1h 32m", as the playlist rows above say it.
+  static func info(_ mix: HomeManager.MadeForYouMix) -> String {
+    let songs = OneTapPlay.playables(mix.songs)
+    let seconds = songs.reduce(0) { $0 + $1.duration }
+    let count = "\(songs.count) \(songs.count == 1 ? "Song" : "Songs")"
+    return seconds > 0 ? "\(count) · \(seconds.asDurationShortString)" : count
+  }
+}

@@ -108,7 +108,19 @@ enum DetailStickyHeaderSupport {
     // of scroll (was a ~20pt near-snap). progress is monotonic in
     // -heroBottomY, so once it reaches 1 it stays 1 for the rest of the scroll.
     let fadeDistance: CGFloat = 100
-    let progress = max(0, min(1, (barBottomY + fadeDistance - heroBottomY) / fadeDistance))
+    let heroProgress = max(0, min(1, (barBottomY + fadeDistance - heroBottomY) / fadeDistance))
+    // 2026-10-31 (I-V14): where the page has a big title, the bar and its small title arrive
+    // as that title slides under the bar, not after the whole hero (cover, title, facts and
+    // the Play and Shuffle pills) has gone: keyed to the hero, the big title passed under a
+    // see-through bar, crossing the back key and the half-faded small title.
+    let progress: CGFloat
+    if let titleBottom = Self.heroTitleBottom(in: tableHeaderView) {
+      let titleBottomY = tableHeaderView.frame.minY + titleBottom - scrollView.contentOffset.y
+      let titleFade: CGFloat = 44
+      progress = max(0, min(1, (barBottomY + titleFade - titleBottomY) / titleFade))
+    } else {
+      progress = heroProgress
+    }
     stickyHeader.alpha = progress
     // round 7f: also drive isHidden from the scroll position, not just alpha.
     // alpha 0 is "transparent but PRESENT" — UIKit composites the titleView during
@@ -141,7 +153,18 @@ enum DetailStickyHeaderSupport {
       item.compactScrollEdgeAppearance = barAppearance
     }
     // Reveal the bar-level play action once the hero's own play CTA has
-    // scrolled out from under the bar (midpoint of the title fade).
-    collapsedPlayItem?.isHidden = progress < 0.5
+    // scrolled out from under the bar (midpoint of the hero's fade).
+    collapsedPlayItem?.isHidden = heroProgress < 0.5
+  }
+
+  /// The record page's big title, in the hero's coordinates, when the hero has one.
+  private static func heroTitleBottom(in header: UIView) -> CGFloat? {
+    if let generic = header as? GenericDetailTableHeader { return generic.titleBottom }
+    for sub in header.subviews {
+      if let generic = sub as? GenericDetailTableHeader, let bottom = generic.titleBottom {
+        return generic.convert(CGPoint(x: 0, y: bottom), to: header).y
+      }
+    }
+    return nil
   }
 }

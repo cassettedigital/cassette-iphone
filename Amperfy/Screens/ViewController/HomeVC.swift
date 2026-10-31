@@ -75,6 +75,7 @@ final class HomeVC: UICollectionViewController {
     )
     let layout = HomeVC.createLayout()
     super.init(collectionViewLayout: layout)
+    HomeManager.live = sharedHome
     sharedHome.applySnapshotCB = { [weak self] in
       guard let self else { return }
       applySnapshot(animated: true)
@@ -348,7 +349,22 @@ final class HomeVC: UICollectionViewController {
     // now that Home is on screen.
     appDelegate.storage.main.library.rollOffAgedHomeShelfEvents(for: account)
     recordForgottenShelfImpressionIfVisible()
+    // What's on at the Radio row's stations, read while Home is up (I-R1).
+    if !watchingOnNow {
+      watchingOnNow = true
+      RadioOnNow.shared.begin()
+    }
   }
+
+  override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+    if watchingOnNow {
+      watchingOnNow = false
+      RadioOnNow.shared.end()
+    }
+  }
+
+  private var watchingOnNow = false
 
   /// cassette (Forgotten Albums): stamp `lastSurfacedOnHomeDate` + write a hot-log
   /// "surfaced" row for the albums currently on the shelf. Only when actually on

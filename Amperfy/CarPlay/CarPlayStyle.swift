@@ -188,14 +188,21 @@ struct CarPlayStyle {
   /// station with no logo were two initials on a flat colour, "gross"): the station's colour
   /// running into the sunken surface, its name in our type along the bottom, drawn square at
   /// `side` points and `scale`.
-  static func phoneWordArt(word: String, color: UIColor, side: CGFloat, scale: CGFloat) -> UIImage {
+  /// `trailingReserve` (points) keeps the word clear of a play disc in the tile's corner.
+  static func phoneWordArt(
+    word: String,
+    color: UIColor,
+    side: CGFloat,
+    scale: CGFloat,
+    trailingReserve: CGFloat = 0
+  ) -> UIImage {
     let format = UIGraphicsImageRendererFormat()
     format.scale = scale
     format.opaque = true
     let rect = CGRect(x: 0, y: 0, width: side, height: side)
     return UIGraphicsImageRenderer(size: rect.size, format: format).image { renderer in
       fillAngledGradient(renderer.cgContext, rect: rect, from: color, to: UIColor.cassette(.surfaceSunken))
-      drawMadeWord(word, side: side)
+      drawMadeWord(word, side: side, trailingReserve: trailingReserve)
     }
   }
 
@@ -317,10 +324,10 @@ struct CarPlayStyle {
   /// The word in our type: upper-cased, bottom-anchored, wrapped to at most three lines, and
   /// stepped down in size while a line still overflows. At the smallest size a name that still
   /// does not fit keeps its first three lines; the title under the tile carries it in full.
-  private static func drawMadeWord(_ word: String, side: CGFloat) {
+  private static func drawMadeWord(_ word: String, side: CGFloat, trailingReserve: CGFloat = 0) {
     let text = word.uppercased()
     let inset = side * Made.sideInset
-    let width = side - inset * 2
+    let width = side - inset * 2 - max(0, trailingReserve - inset)
     let largest = side * Made.textSize
     let smallest = largest * Made.smallestText
     var size = largest

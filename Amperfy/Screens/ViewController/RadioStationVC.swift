@@ -13,7 +13,8 @@
 //  opens at once from the registry copy the app carries (name, art, about, similar), and
 //  the live parts fill in from the cloud, read again every 30 seconds while it is on
 //  screen and as soon as the radio hears the song change, paused or playing, so the log
-//  keeps moving and never falls back to the song that was on when the page opened. Save
+//  keeps moving and never falls back to the song that was on when the page opened, nor,
+//  after Stop, to an answer older than the song it just played (BUG-750). Save
 //  is the web's save (RadioSaved). Lit like the record pages: the station's mark (or its
 //  word picture) is the glow and the colour of the headings' answers.
 //
@@ -131,6 +132,15 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
   private var recent: [RadioStationPagePayload.Track] = []
   /// The song the radio last heard on this station, to read the page again when it changes.
   private var heardKey: String?
+  /// The last song the radio heard here and when (stamped again when it stops). After Stop it
+  /// stays the song on now until a read asked for well after that moment comes back, so the
+  /// page never falls back to an older answer than the one it just played (BUG-750).
+  private var lastHeard: (track: RadioStationPagePayload.Track, at: Date)?
+  /// When the read behind `live` was asked for.
+  private var liveAskedAt: Date?
+  private var wasPlaying = false
+  /// How long the cloud's answers can lag (the route's edge cache: 15 s plus 5 s stale).
+  private static let cloudLag: TimeInterval = 20
   /// What On air last drew, so a read that changes nothing leaves it (and an open menu) alone.
   private var drawn: String?
 
@@ -243,13 +253,24 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
     RunLoop.main.add(timer, forMode: .common)
     refreshTimer = timer
     Task { await RadioSaved.shared.refresh() }
+    // What's on at the stations like this one (their tiles' second line).
+    if !watchingOnNow {
+      watchingOnNow = true
+      RadioOnNow.shared.begin()
+    }
   }
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     refreshTimer?.invalidate()
     refreshTimer = nil
+    if watchingOnNow {
+      watchingOnNow = false
+      RadioOnNow.shared.end()
+    }
   }
+
+  private var watchingOnNow = false
 
   override func viewDidLayoutSubviews() {
     super.viewDidLayoutSubviews()
@@ -371,7 +392,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       lighter.lightUp(image: wordArt, key: "radio-word:\(station.slug)")
       return
     }
-    if let cached = RadioArtLoader.shared.cachedImage(for: src) {
+    if let cached = RadioArtLoader.shared.cachedImage(for: src), RadioArtLoader.isSharp(cached) {
       art.image = cached
       lighter.lightUp(image: cached, key: "radio:\(src)")
       return
@@ -379,7 +400,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
     Task { @MainActor [weak self] in
       let loaded = await RadioArtLoader.shared.image(for: src)
       guard let self else { return }
-      if let loaded {
+      if let loaded, RadioArtLoader.isSharp(loaded) {
         art.image = loaded
         lighter.lightUp(image: loaded, key: "radio:\(src)")
       } else {
@@ -402,7 +423,14 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
   @objc
   private func playerStateChanged() {
     guard radio != nil else { return }
-    LibraryElementDetailTableHeaderView.setPlayPill(playPill, state: isThisStationPlaying ? .stop : .play)
+    let playing = isThisStationPlaying
+    LibraryElementDetailTableHeaderView.setPlayPill(playPill, state: playing ? .stop : .play)
+    if wasPlaying, !playing {
+      // Stopped: what it heard is the latest word until the cloud has caught up, then read again.
+      if let heard = lastHeard { lastHeard = (heard.track, Date()) }
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.cloudLag + 1) { [weak self] in self?.refreshLive() }
+    }
+    wasPlaying = playing
     drawLive()
   }
 
@@ -524,6 +552,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
   private func refreshLive() {
     guard station.hasNowPlaying || station.hasRecentPlays == true || !loadedOnce else { return }
     guard let url = URL(string: Self.base + "/api/radio/station/" + station.slug) else { return }
+    let asked = Date()
     Task { @MainActor [weak self] in
       var request = URLRequest(url: url)
       request.timeoutInterval = 10
@@ -534,6 +563,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
         guard let self else { return }
         loadedOnce = true
         live = payload.live
+        liveAskedAt = asked
         recent = payload.recent ?? []
         drawLive()
         if let server = payload.similar, !server.isEmpty { showSimilar(server) }
@@ -541,11 +571,11 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       }
       // The station route is newer than the now-playing route; until it ships, what's
       // on still comes from the route the player already reads.
-      await self?.refreshFromNowPlaying()
+      await self?.refreshFromNowPlaying(asked: asked)
     }
   }
 
-  private func refreshFromNowPlaying() async {
+  private func refreshFromNowPlaying(asked: Date) async {
     guard station.hasNowPlaying,
           let url = URL(string: Self.base + "/api/radio/now-playing?station=" + station.slug)
     else { return }
@@ -557,6 +587,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
           let live = try? JSONDecoder().decode(RadioStationPagePayload.Live.self, from: data)
     else { return }
     self.live = live
+    liveAskedAt = asked
     drawLive()
   }
 
@@ -595,7 +626,14 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
   /// or until it has one, the page's.
   private func drawLive() {
     let page = live?.track
-    let heard = heardSong()
+    let hearing = heardSong()
+    if let hearing { lastHeard = (hearing, Date()) }
+    // Playing, the heard song; stopped, still the heard song until a read asked for after the
+    // cloud could have caught up, so Stop never brings back the page's older answer.
+    let heard = hearing ?? lastHeard.flatMap { last in
+      guard let asked = liveAskedAt else { return last.track }
+      return asked < last.at.addingTimeInterval(Self.cloudLag) ? last.track : nil
+    }
     // The page's copy of the same song carries its cover and its record.
     let now = heard.flatMap { h in page?.key == h.key ? page : h } ?? page
     let show = live?.show

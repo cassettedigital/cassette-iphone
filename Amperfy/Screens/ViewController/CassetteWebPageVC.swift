@@ -59,6 +59,8 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
   private var titleObservation: NSKeyValueObservation?
   private var triedSignedIn = false
   private var shown = false
+  /// Opened with a name for the bar, which the page's own title then leaves alone.
+  private let hasGivenTitle: Bool
 
   /// - Parameters:
   ///   - path: a page on the site ("/album/tim").
@@ -75,6 +77,7 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
     // the preview's video stays in the page, never floating over the rest of the app
     config.allowsPictureInPictureMediaPlayback = false
     webView = WKWebView(frame: .zero, configuration: config)
+    hasGivenTitle = !(title ?? "").isEmpty
     super.init(nibName: nil, bundle: nil)
     navigationItem.title = title
     navigationItem.largeTitleDisplayMode = .never
@@ -129,11 +132,16 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
       spinner.topAnchor.constraint(equalTo: cover.bottomAnchor, constant: 24),
     ])
 
-    // The page names itself ("Tim — The Replacements — Cassette"); the bar shows its first part.
+    // The bar keeps the name the app opened the page with ("Please Please Me"); a page opened
+    // without one shows the page's own name up to the site's suffix ("Tim by The Replacements ·
+    // Cassette", once "Tim — The Replacements — Cassette"), never the whole of it (I-S8).
     titleObservation = webView.observe(\.title, options: [.new]) { [weak self] webView, _ in
-      let name = webView.title?.components(separatedBy: " — ").first
+      let name = webView.title?
+        .components(separatedBy: " — ").first?
+        .components(separatedBy: " · ").first
       MainActor.assumeIsolated {
-        if let name, !name.isEmpty { self?.navigationItem.title = name }
+        guard let self, !self.hasGivenTitle, let name, !name.isEmpty else { return }
+        self.navigationItem.title = name
       }
     }
 

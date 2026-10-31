@@ -159,8 +159,10 @@ final class LibraryContainerVC: UIViewController {
     config.attributedTitle = AttributedString(label, attributes: titleContainer)
     config.image = CassetteIcon.chevronDown.symbolImage
     config.imagePlacement = .trailing
+    // Small beside the 18pt title (the founder, 2026-10-31: the row-size chevron read as big
+    // as the word), the size Apple's own title menus use.
     config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
-      pointSize: CassetteIconSize.row.rawValue,
+      pointSize: CassetteIconSize.small.rawValue,
       weight: .semibold
     )
     config.imagePadding = 4
@@ -219,6 +221,7 @@ final class LibraryContainerVC: UIViewController {
     ])
     child.didMove(toParent: self)
     embeddedChild = child
+    tightenTop(of: child)
     // cassette (rail): the tab bar minimizes and expands by watching the
     // selected screen's content scroll view. A plain container has none, so
     // the bar never saw a scroll here and the manual reveal hack grew in its
@@ -229,6 +232,20 @@ final class LibraryContainerVC: UIViewController {
     navigationItem.hidesSearchBarWhenScrolling = true
     navigationItem.rightBarButtonItems = child.navigationItem.rightBarButtonItems
     definesPresentationContext = true
+  }
+
+  /// One top for every Library list (I-V16, the founder 2026-10-31: "why is there such a
+  /// large gap between the results and the header?"). A grouped table leaves about 35pt above
+  /// its first section when it has no header view, plus its section top padding: Artists,
+  /// Playlists and Genres started about 40pt under the bar while Albums started at once. A
+  /// small header view of our own and no section padding put the first row (or heading) one
+  /// small step under the bar on every list.
+  private func tightenTop(of child: UIViewController) {
+    guard let table = (child as? UITableViewController)?.tableView, table.style != .plain else { return }
+    table.sectionHeaderTopPadding = 0
+    if table.tableHeaderView == nil {
+      table.tableHeaderView = UIView(frame: CGRect(x: 0, y: 0, width: 0, height: CassetteTheme.Spacing.sm))
+    }
   }
 
   private func unembedCurrentChild() {

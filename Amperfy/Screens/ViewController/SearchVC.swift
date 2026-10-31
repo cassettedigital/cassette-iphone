@@ -37,6 +37,8 @@ public enum SearchSection: Int, CaseIterable {
   case Artist
   case Playlist
   case Station
+  /// Cassette's catalog: what isn't on this phone (the founder, 2026-10-31, Q17).
+  case Catalog
 
   /// The section's shout heading (none for the top card).
   var shout: String {
@@ -48,7 +50,13 @@ public enum SearchSection: Int, CaseIterable {
     case .Artist: return "ARTISTS"
     case .Playlist: return "PLAYLISTS"
     case .Station: return "STATIONS"
+    case .Catalog: return "ON CASSETTE"
     }
+  }
+
+  /// The heading's italic answer, where it has one.
+  var answer: String? {
+    self == .Catalog ? "not in your library" : nil
   }
 }
 
@@ -64,6 +72,8 @@ enum SearchRow: Hashable, Sendable {
   case artistShelf
   /// A station on the radio dial, by its record's id (RadioDial).
   case station(String)
+  /// An artist, album or song from Cassette's catalog, by `CatalogHit.id`.
+  case catalog(String)
 }
 
 // MARK: - SearchDiffableDataSource
@@ -163,6 +173,10 @@ class SearchVC: BasicTableViewController {
   fileprivate var songs: [Song] = []
   /// The dial's stations that match, the best few (the radio's own search goes through all of them).
   fileprivate var stations: [RadioRow] = []
+  /// Cassette's catalog matches that aren't on this phone, read from the site after the
+  /// phone's own pass (I-M9).
+  fileprivate var catalog: [CatalogHit] = []
+  private var catalogTask: Task<(), Never>?
   private var topResult: SearchTopResult?
   /// The query the shown results were found for (the top card lights its letters).
   private var currentQuery = ""
@@ -248,13 +262,27 @@ class SearchVC: BasicTableViewController {
       stations.map { .station($0.radio.id) },
       toSection: SearchSection.Station.rawValue
     )
+    snapshot.appendItems(catalog.map { .catalog($0.id) }, toSection: SearchSection.Catalog.rawValue)
     let previous = dataSource.snapshot()
     let reloads = rebuilt.filter { previous.indexOfItem($0) != nil }
     if !reloads.isEmpty {
       snapshot.reloadItems(reloads)
     }
+    // A section's heading is asked for only when the section itself reloads; applying new
+    // items alone left the headings of sections that had just emptied in place, stacked on
+    // top of each other over "No results" (BUG-748). Reload every section whose heading comes
+    // or goes.
+    let headed = Set(SearchSection.allCases.filter { headerHeight(for: $0) > 0 }.map(\.rawValue))
+    let changed = headed.symmetricDifference(headedSections)
+    headedSections = headed
+    if !changed.isEmpty {
+      snapshot.reloadSections(changed.sorted())
+    }
     dataSource.apply(snapshot, animatingDifferences: animated)
   }
+
+  /// The sections whose heading showed on the last pass.
+  private var headedSections = Set<Int>()
 
   override func viewDidLoad() {
     super.viewDidLoad()
@@ -266,6 +294,7 @@ class SearchVC: BasicTableViewController {
       forCellReuseIdentifier: SearchTopResultCell.reuseIdentifier
     )
     tableView.register(RadioStationCell.self, forCellReuseIdentifier: RadioStationCell.reuseId)
+    tableView.register(CatalogHitCell.self, forCellReuseIdentifier: CatalogHitCell.reuseIdentifier)
     tableView.register(
       AlbumCarouselTableCell.self,
       forCellReuseIdentifier: AlbumCarouselTableCell.reuseIdentifier
@@ -315,7 +344,7 @@ class SearchVC: BasicTableViewController {
       case let .history(item): return item.searchedPlayableContainable
       case let .song(song): return song
       case let .playlist(playlist): return playlist
-      case .top, .albumShelf, .artistShelf, .station, .none: return nil
+      case .top, .albumShelf, .artistShelf, .station, .catalog, .none: return nil
       }
     }
     playContextAtIndexPathCallback = { [weak self] indexPath in
@@ -328,7 +357,7 @@ class SearchVC: BasicTableViewController {
         return PlayContext(containable: song)
       case let .playlist(playlist):
         return Self.onPhonePlayContext(playlist)
-      case .top, .albumShelf, .artistShelf, .station, .none:
+      case .top, .albumShelf, .artistShelf, .station, .catalog, .none:
         return nil
       }
     }
@@ -475,6 +504,7 @@ class SearchVC: BasicTableViewController {
     case albumShelf
     case artistShelf
     case station(RadioRow)
+    case catalog(CatalogHit)
   }
 
   private func resolvedRow(at indexPath: IndexPath) -> ResolvedRow? {
@@ -494,6 +524,8 @@ class SearchVC: BasicTableViewController {
       return .artistShelf
     case let .station(id):
       return stations.first { $0.radio.id == id }.map { .station($0) }
+    case let .catalog(id):
+      return catalog.first { $0.id == id }.map { .catalog($0) }
     case let .entity(objectID):
       switch SearchSection(rawValue: indexPath.section) {
       case .History:
@@ -600,7 +632,7 @@ class SearchVC: BasicTableViewController {
       }
     case let .song(song):
       completionHandler(SwipeActionContext(containable: song))
-    case .top, .albumShelf, .artistShelf, .station, .none:
+    case .top, .albumShelf, .artistShelf, .station, .catalog, .none:
       completionHandler(nil)
     }
   }
@@ -677,6 +709,13 @@ class SearchVC: BasicTableViewController {
       cell.configure(row: row, playing: current?.id == row.radio.id)
       cell.onPlayTapped = { [weak self] in self?.play(row.radio) }
       return cell
+    case let .catalog(id):
+      let cell = tableView.dequeueReusableCell(
+        withIdentifier: CatalogHitCell.reuseIdentifier,
+        for: indexPath
+      ) as! CatalogHitCell
+      if let hit = catalog.first(where: { $0.id == id }) { cell.configure(hit) }
+      return cell
     case .entity:
       switch resolve(row, at: indexPath) {
       case let .history(history):
@@ -732,6 +771,7 @@ class SearchVC: BasicTableViewController {
     case .Artist: shows = isSearchActive && !artists.isEmpty
     case .Playlist: shows = isSearchActive && !playlists.isEmpty
     case .Station: shows = isSearchActive && !stations.isEmpty
+    case .Catalog: shows = isSearchActive && !catalog.isEmpty
     }
     return shows ? CassetteHeading.tableHeaderHeight : 0
   }
@@ -756,7 +796,7 @@ class SearchVC: BasicTableViewController {
     else { return nil }
     return CassetteHeading.makeTableHeaderView(
       shout: section.shout,
-      answer: nil,
+      answer: section.answer,
       answerColor: .cassette(.textSecondary)
     )
   }
@@ -800,6 +840,8 @@ class SearchVC: BasicTableViewController {
       return PlaylistTableCell.rowHeight
     case .station:
       return UITableView.automaticDimension
+    case .catalog:
+      return CatalogHitCell.rowHeight
     case .none:
       return 0.0
     }
@@ -839,6 +881,8 @@ class SearchVC: BasicTableViewController {
       } else {
         play(row.radio)
       }
+    case let .catalog(hit):
+      open(hit)
     case .albumShelf, .artistShelf, .none:
       break
     }
@@ -865,6 +909,72 @@ class SearchVC: BasicTableViewController {
     let dial = RadioDial.radios(for: account, storage: appDelegate.storage)
     appDelegate.player.play(context: RadioDial.playContext(for: radio, in: dial))
     updateDataSource(animated: false)
+  }
+
+  // MARK: Cassette's catalog
+
+  /// Asks the site's search for what isn't on this phone, a beat after typing stops, and
+  /// shows it under the phone's own results (the founder, 2026-10-31: "searching for the
+  /// beatles should produce something, but it should be clear the results aren't from their
+  /// library"). Anything already in the phone's results for this query is left out.
+  private func searchCatalog(_ query: String) {
+    catalogTask?.cancel()
+    let trimmed = query.trimmingCharacters(in: .whitespaces)
+    guard trimmed.count >= 2 else {
+      if !catalog.isEmpty {
+        catalog = []
+        updateDataSource(animated: false)
+        updateContentUnavailable()
+      }
+      return
+    }
+    catalogTask = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .milliseconds(350))
+      guard !Task.isCancelled else { return }
+      let hits = await CatalogHit.search(trimmed)
+      guard let self, !Task.isCancelled, query == searchController.searchBar.text else { return }
+      catalog = hits.filter { !isOnPhone($0) }
+      updateDataSource(animated: false)
+      updateContentUnavailable()
+    }
+  }
+
+  /// Already among the phone's own results for this query (by name; the catalog and the
+  /// phone share no ids).
+  private func isOnPhone(_ hit: CatalogHit) -> Bool {
+    let same = { (a: String, b: String) in a.caseInsensitiveCompare(b) == .orderedSame }
+    switch hit.kind {
+    case .artist:
+      return artists.contains { same($0.artist.name, hit.title) } ||
+        appDelegate.storage.main.library.getArtistByExactName(for: account, name: hit.title) != nil
+    case .album:
+      return albums.contains { album in same(album.name, hit.title) && same(album.artist?.name ?? "", hit.artistName) }
+    case .song:
+      return songs.contains { same($0.title, hit.title) && same($0.creatorName, hit.artistName) }
+    }
+  }
+
+  /// An artist's page, or the album (a song opens its album), as the site draws it inside the
+  /// app; an album the person owns opens as their own (RecordOpener).
+  private func open(_ hit: CatalogHit) {
+    let push: (UIViewController) -> () = { [weak self] vc in
+      self?.navigationController?.pushViewController(vc, animated: true)
+    }
+    switch hit.kind {
+    case .artist:
+      guard let slug = hit.artistSlug else { return }
+      let path = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
+      push(CassetteWebPageVC(path: "/artist/\(path)", title: hit.title, placeholder: nil))
+    case .album, .song:
+      guard let slug = hit.albumSlug else { return }
+      RecordOpener.open(
+        albumSlug: slug,
+        title: hit.kind == .album ? hit.title : hit.albumTitle,
+        placeholder: hit.imageUrl.flatMap { RadioArtLoader.shared.cachedImage(for: $0) },
+        account: account,
+        show: push
+      )
+    }
   }
 
   /// Opens an album page and records it in the search history.
@@ -960,6 +1070,7 @@ class SearchVC: BasicTableViewController {
           )
         }
         self.applySearchResult(searchResult, for: searchText, withStations: true)
+        self.searchCatalog(searchText)
       } catch {
         self.appDelegate.eventLogger.report(topic: "Local Search", error: error, isBackground: true)
         self.updateContentUnavailable()
@@ -1042,6 +1153,8 @@ class SearchVC: BasicTableViewController {
       playlists = []
       songs = []
       stations = []
+      catalogTask?.cancel()
+      catalog = []
       topResult = nil
       updateDataSource(animated: false)
       updateContentUnavailable()
@@ -1142,7 +1255,7 @@ class SearchVC: BasicTableViewController {
     }
     if isSearchActive {
       if topResult == nil, artists.isEmpty, albums.isEmpty, playlists.isEmpty, songs.isEmpty,
-         stations.isEmpty {
+         stations.isEmpty, catalog.isEmpty {
         // cassette Layer 3 Phase 3.2: in on-device-only mode search is scoped to
         // owned items.
         contentUnavailableConfiguration = CassetteLibraryFilterProvider.shared.isOnDeviceOnly ?
@@ -2125,5 +2238,185 @@ final class SearchArtistCircleCell: UICollectionViewCell {
     artworkView.isHidden = false
     artworkView.shape = .circle
     artworkView.display(theme: theme, container: container)
+  }
+}
+
+// MARK: - CatalogHit
+
+/// An artist, album or song from Cassette's catalog, from the site's name search
+/// (GET /api/search, apps/cassette/src/app/api/search/route.ts): the same ranking as the
+/// website's type-ahead, the famous name first.
+struct CatalogHit: Hashable, Sendable {
+  enum Kind: Hashable, Sendable { case artist, album, song }
+
+  let kind: Kind
+  /// The kind and the catalog's id, unique across the three lists.
+  let id: String
+  let title: String
+  let artistName: String
+  let albumTitle: String?
+  let imageUrl: String?
+  let artistSlug: String?
+  let albumSlug: String?
+
+  /// "Artist", "Album · The Beatles", "Song · The Beatles".
+  var subtitle: String {
+    switch kind {
+    case .artist: return "Artist"
+    case .album: return "Album · \(artistName)"
+    case .song: return "Song · \(artistName)"
+    }
+  }
+
+  private static let artistLimit = 2
+  private static let albumLimit = 4
+  private static let songLimit = 4
+
+  private struct Payload: Decodable {
+    struct Artist: Decodable {
+      let id: String
+      let name: String
+      let slug: String?
+      let imageUrl: String?
+    }
+
+    struct Album: Decodable {
+      let id: String
+      let title: String
+      let slug: String?
+      let artistName: String?
+      let artistSlug: String?
+      let coverArtUrl: String?
+    }
+
+    struct Song: Decodable {
+      let id: String
+      let title: String
+      let artistName: String?
+      let artistSlug: String?
+      let albumTitle: String?
+      let albumSlug: String?
+      let coverArtUrl: String?
+    }
+
+    let artists: [Artist]
+    let albums: [Album]
+    let songs: [Song]
+    /// The groups in the order the site shows them ("artists", "albums", "songs").
+    let order: [String]?
+  }
+
+  private static let base = "https://www.cassette.digital"
+
+  /// The best few of each kind, in the site's order; empty on any failure.
+  @MainActor
+  static func search(_ query: String) async -> [CatalogHit] {
+    var parts = URLComponents(string: base + "/api/search")
+    parts?.queryItems = [URLQueryItem(name: "q", value: String(query.prefix(120))), URLQueryItem(name: "perPage", value: "6")]
+    guard let url = parts?.url else { return [] }
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 8
+    guard let (data, response) = try? await URLSession.shared.data(for: request),
+          (response as? HTTPURLResponse)?.statusCode == 200,
+          let payload = try? JSONDecoder().decode(Payload.self, from: data)
+    else { return [] }
+    let artists = payload.artists.prefix(artistLimit).map {
+      CatalogHit(
+        kind: .artist, id: "artist:\($0.id)", title: $0.name, artistName: $0.name, albumTitle: nil,
+        imageUrl: $0.imageUrl, artistSlug: $0.slug, albumSlug: nil
+      )
+    }
+    let albums = payload.albums.filter { $0.slug != nil }.prefix(albumLimit).map {
+      CatalogHit(
+        kind: .album, id: "album:\($0.id)", title: $0.title, artistName: $0.artistName ?? "",
+        albumTitle: $0.title, imageUrl: $0.coverArtUrl, artistSlug: $0.artistSlug, albumSlug: $0.slug
+      )
+    }
+    let songs = payload.songs.filter { $0.albumSlug != nil }.prefix(songLimit).map {
+      CatalogHit(
+        kind: .song, id: "song:\($0.id)", title: $0.title, artistName: $0.artistName ?? "",
+        albumTitle: $0.albumTitle, imageUrl: $0.coverArtUrl, artistSlug: $0.artistSlug, albumSlug: $0.albumSlug
+      )
+    }
+    let groups: [String: [CatalogHit]] = ["artists": Array(artists), "albums": Array(albums), "songs": Array(songs)]
+    let order = (payload.order ?? []).filter { groups[$0] != nil }
+    return (order.isEmpty ? ["artists", "albums", "songs"] : order).flatMap { groups[$0] ?? [] }
+  }
+}
+
+// MARK: - CatalogHitCell
+
+/// One catalog match: its picture (a circle for an artist), its name, and what it is.
+final class CatalogHitCell: UITableViewCell {
+  static let reuseIdentifier = "CatalogHitCell"
+  static let rowHeight: CGFloat = 48 + 2 * CassetteTheme.Spacing.sm
+
+  private let art = UIImageView()
+  private let titleLabel = UILabel()
+  private let subtitleLabel = UILabel()
+  private var represented: String?
+
+  override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+    super.init(style: style, reuseIdentifier: reuseIdentifier)
+    backgroundColor = .clear
+    contentView.backgroundColor = .clear
+    let selected = UIView()
+    selected.backgroundColor = CassetteTheme.UIColors.bg3
+    selectedBackgroundView = selected
+
+    art.contentMode = .scaleAspectFill
+    art.clipsToBounds = true
+    art.backgroundColor = CassetteTheme.UIColors.bg3
+    art.layer.cornerCurve = .continuous
+
+    titleLabel.font = UIFont.cassette(.rowTitle)
+    titleLabel.textColor = .cassette(.textPrimary)
+    subtitleLabel.font = UIFont.cassette(.metadata)
+    subtitleLabel.textColor = .cassette(.textSecondary)
+
+    let text = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
+    text.axis = .vertical
+    text.spacing = 2
+    for v in [art, text] {
+      v.translatesAutoresizingMaskIntoConstraints = false
+      contentView.addSubview(v)
+    }
+    let m = CassetteHeading.sideInset
+    NSLayoutConstraint.activate([
+      art.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: m),
+      art.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+      art.widthAnchor.constraint(equalToConstant: 48),
+      art.heightAnchor.constraint(equalToConstant: 48),
+      text.leadingAnchor.constraint(equalTo: art.trailingAnchor, constant: CassetteTheme.Spacing.md),
+      text.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -m),
+      text.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+    ])
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  override func prepareForReuse() {
+    super.prepareForReuse()
+    represented = nil
+    art.image = nil
+  }
+
+  func configure(_ hit: CatalogHit) {
+    titleLabel.text = hit.title
+    subtitleLabel.text = hit.subtitle
+    art.layer.cornerRadius = hit.kind == .artist ? 24 : CassetteRadius.small
+    accessibilityLabel = "\(hit.title), \(hit.subtitle), not in your library"
+    represented = hit.imageUrl
+    guard let src = hit.imageUrl, !src.isEmpty else { return }
+    if let cached = RadioArtLoader.shared.cachedImage(for: src) {
+      art.image = cached
+      return
+    }
+    Task { @MainActor [weak self] in
+      let loaded = await RadioArtLoader.shared.image(for: src)
+      guard let self, represented == src else { return }
+      art.image = loaded
+    }
   }
 }

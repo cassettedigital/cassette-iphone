@@ -64,9 +64,11 @@ struct RadioCatalogStation: Decodable, Sendable {
 
   var isLive: Bool { kind == "station" }
 
-  /// "SomaFM · San Francisco" / "KEXP · Seattle · Live"
+  /// "SomaFM · San Francisco" / "Seattle · Live" (KEXP's network is KEXP: said once, in its
+  /// name, never again on the line under it, I-R1).
   var kicker: String {
-    [sourceLabel, cityLabels.first, isLive ? "Live" : nil].compactMap { $0 }
+    let network = sourceLabel.caseInsensitiveCompare(name) == .orderedSame ? nil : sourceLabel
+    return [network, cityLabels.first, isLive ? "Live" : nil].compactMap { $0 }
       .joined(separator: " · ")
   }
 
@@ -404,6 +406,13 @@ final class RadioArtLoader {
     cache.object(forKey: urlString as NSString)
   }
 
+  /// Big enough to stand for the station on a Home tile (150pt) and everywhere smaller: at
+  /// least 150 pixels on its short side. A smaller logo stretched up is a blur, so the station
+  /// keeps its word art, the same everywhere it appears (I-V13).
+  static func isSharp(_ image: UIImage) -> Bool {
+    min(image.size.width, image.size.height) * image.scale >= 150
+  }
+
   func image(for urlString: String) async -> UIImage? {
     if let hit = cache.object(forKey: urlString as NSString) { return hit }
     guard let url = URL(string: urlString) else { return nil }
@@ -601,6 +610,93 @@ struct RadioLiveMatch: Decodable, Sendable {
   }
 }
 
+// MARK: - RadioOnNow
+
+/// cassette 2026-10-31 (I-R1): what's on at every station whose feed we read, names only,
+/// from cassette.digital's on-now route, so the line under a station's name in the radio
+/// list and on Home's tiles says what it's playing instead of repeating its name. Read every
+/// 30 seconds while a screen that shows stations is up (`begin` / `end`, counted); the cells
+/// listen for `didChange` and redraw their own line. A miss keeps the last answer.
+@MainActor
+final class RadioOnNow {
+  static let shared = RadioOnNow()
+  static let didChange = Notification.Name("RadioOnNow.didChange")
+
+  private struct Entry: Decodable, Equatable {
+    let artist: String?
+    let title: String?
+    let show: String?
+  }
+
+  private struct Payload: Decodable {
+    let stations: [String: Entry]
+  }
+
+  private static var route: String {
+    #if DEBUG
+      // SIMCTL_CHILD_CASSETTE_RADIO_BASE=http://localhost:3200 xcrun simctl launch …
+      if let base = ProcessInfo.processInfo.environment["CASSETTE_RADIO_BASE"], !base.isEmpty {
+        return base + "/api/radio/on-now"
+      }
+    #endif
+    return "https://www.cassette.digital/api/radio/on-now"
+  }
+
+  private static let every: TimeInterval = 30
+
+  private var entries: [String: Entry] = [:]
+  private var watchers = 0
+  private var timer: Timer?
+  private var lastRead: Date?
+
+  private init() {}
+
+  /// "Life On Mars? · David Bowie", else the show's name, else nil (no feed, or not read yet).
+  func line(for slug: String?) -> String? {
+    guard let slug, let entry = entries[slug] else { return nil }
+    if let title = entry.title, let artist = entry.artist, !title.isEmpty, !artist.isEmpty {
+      return "\(title) · \(artist)"
+    }
+    if let show = entry.show, !show.isEmpty { return show }
+    return nil
+  }
+
+  func begin() {
+    watchers += 1
+    guard watchers == 1 else { return }
+    if lastRead.map({ Date().timeIntervalSince($0) > 10 }) ?? true { read() }
+    let timer = Timer(timeInterval: Self.every, repeats: true) { _ in
+      MainActor.assumeIsolated { RadioOnNow.shared.read() }
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    self.timer = timer
+  }
+
+  func end() {
+    watchers = max(0, watchers - 1)
+    guard watchers == 0 else { return }
+    timer?.invalidate()
+    timer = nil
+  }
+
+  private func read() {
+    guard let url = URL(string: Self.route) else { return }
+    lastRead = Date()
+    Task { @MainActor in
+      var request = URLRequest(url: url)
+      request.timeoutInterval = 10
+      request.cachePolicy = .reloadIgnoringLocalCacheData
+      guard let (data, response) = try? await URLSession.shared.data(for: request),
+            (response as? HTTPURLResponse)?.statusCode == 200,
+            let payload = try? JSONDecoder().decode(Payload.self, from: data),
+            payload.stations != entries
+      else { return }
+      entries = payload.stations
+      NotificationCenter.default.post(name: Self.didChange, object: nil)
+    }
+  }
+}
+
 // MARK: - RadioRow
 
 struct RadioRow {
@@ -620,8 +716,11 @@ final class RadioStationCell: UITableViewCell {
   private let initials = UILabel()
   private let nameLabel = UILabel()
   private let kickerLabel = UILabel()
+  /// What's on now (RadioOnNow); the station's about text stays off the list, as on its page.
   private let descLabel = UILabel()
   private let playingMark = UIImageView()
+  private var slug: String?
+  private var kicker = ""
   /// cassette 2026-10-21: the row opens the station's page; this disc tunes in at once
   /// (the same one-tap play disc the record tiles wear).
   private let playButton = AlbumCollectionCell.makePlayOverlayButton()
@@ -655,21 +754,25 @@ final class RadioStationCell: UITableViewCell {
     kickerLabel.textColor = CassetteTheme.UIColors.ink2
     kickerLabel.numberOfLines = 1
 
-    descLabel.font = UIFont.systemFont(ofSize: 13)
-    descLabel.textColor = CassetteTheme.UIColors.ink3
-    descLabel.numberOfLines = 2
+    descLabel.font = UIFont.cassette(.metadata)
+    descLabel.textColor = CassetteTheme.UIColors.ink2
+    descLabel.numberOfLines = 1
+    kickerLabel.textColor = CassetteTheme.UIColors.ink3
 
     playingMark.image = UIImage(systemName: "waveform")
     playingMark.tintColor = CassetteTheme.UIColors.orange
     playingMark.contentMode = .scaleAspectFit
     playingMark.isHidden = true
 
-    let text = UIStackView(arrangedSubviews: [nameLabel, kickerLabel, descLabel])
+    let text = UIStackView(arrangedSubviews: [nameLabel, descLabel, kickerLabel])
     text.axis = .vertical
     text.spacing = 3
     text.alignment = .leading
 
     playButton.addAction(UIAction { [weak self] _ in self?.onPlayTapped?() }, for: .touchUpInside)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(onNowChanged), name: RadioOnNow.didChange, object: nil
+    )
 
     for v in [art, initials, text, playingMark, playButton] {
       v.translatesAutoresizingMaskIntoConstraints = false
@@ -685,8 +788,8 @@ final class RadioStationCell: UITableViewCell {
         lessThanOrEqualTo: contentView.bottomAnchor,
         constant: -CassetteTheme.Spacing.md
       ),
-      art.widthAnchor.constraint(equalToConstant: 56),
-      art.heightAnchor.constraint(equalToConstant: 56),
+      art.widthAnchor.constraint(equalToConstant: Self.artSide),
+      art.heightAnchor.constraint(equalToConstant: Self.artSide),
       initials.centerXAnchor.constraint(equalTo: art.centerXAnchor),
       initials.centerYAnchor.constraint(equalTo: art.centerYAnchor),
       initials.widthAnchor.constraint(equalTo: art.widthAnchor),
@@ -729,35 +832,55 @@ final class RadioStationCell: UITableViewCell {
 
   func configure(row: RadioRow, playing: Bool) {
     nameLabel.text = row.displayName
-    if let info = row.info {
-      kickerLabel.text = info.kicker
-      descLabel.text = info.description
-      kickerLabel.isHidden = false
-      descLabel.isHidden = false
-    } else {
-      kickerLabel.text = row.radio.siteURL?.host ?? ""
-      kickerLabel.isHidden = (row.radio.siteURL?.host ?? "").isEmpty
-      descLabel.text = nil
-      descLabel.isHidden = true
-    }
+    slug = row.info?.slug
+    kicker = row.info?.kicker ?? row.radio.siteURL?.host ?? ""
+    showOnNow()
     playingMark.isHidden = !playing
     playButton.isHidden = playing
     playButton.accessibilityLabel = "Play \(row.displayName)"
     nameLabel.textColor = playing ? CassetteTheme.UIColors.orange : CassetteTheme.UIColors.ink
 
-    initials.text = Self.initials(of: row.displayName)
-    initials.isHidden = false
-    art.image = nil
+    // The word picture (the founder, 2026-10-21: never initials) until a sharp logo lands.
+    initials.isHidden = true
     art.backgroundColor = RadioTile.fill(accent: row.info?.accent)
+    let color = row.info.flatMap { UIColor(cassetteHexString: $0.accent) } ?? CassetteTheme.UIColors.bg3
+    art.image = CarPlayStyle.phoneWordArt(
+      word: row.displayName,
+      color: color,
+      side: Self.artSide,
+      scale: traitCollection.displayScale > 0 ? traitCollection.displayScale : 3
+    )
     if let image = row.info?.image, !image.isEmpty {
       representedImage = image
+      if let cached = RadioArtLoader.shared.cachedImage(for: image) {
+        if RadioArtLoader.isSharp(cached) { art.image = cached }
+        return
+      }
       loadTask = Task { @MainActor [weak self] in
         let loaded = await RadioArtLoader.shared.image(for: image)
-        guard let self, representedImage == image, let loaded else { return }
-        art.image = loaded
-        initials.isHidden = true
+        guard let self, representedImage == image, let loaded,
+              RadioArtLoader.isSharp(loaded) else { return }
+        UIView.transition(with: art, duration: 0.2, options: .transitionCrossDissolve) {
+          self.art.image = loaded
+        }
       }
     }
+  }
+
+  private static let artSide: CGFloat = 56
+
+  /// The second line says what's on; the third where the station is from.
+  private func showOnNow() {
+    let now = RadioOnNow.shared.line(for: slug)
+    descLabel.text = now
+    descLabel.isHidden = now == nil
+    kickerLabel.text = kicker
+    kickerLabel.isHidden = kicker.isEmpty
+  }
+
+  @objc
+  private func onNowChanged() {
+    showOnNow()
   }
 
   private static func initials(of name: String) -> String {
@@ -847,13 +970,24 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
     super.viewIsAppearing(animated)
     extendSafeAreaToAccountForMiniPlayer()
     updateFromRemote()
+    if !watchingOnNow {
+      watchingOnNow = true
+      RadioOnNow.shared.begin()
+    }
   }
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     playingTimer?.invalidate()
     playingTimer = nil
+    if watchingOnNow {
+      watchingOnNow = false
+      RadioOnNow.shared.end()
+    }
   }
+
+  /// Reading what's on (RadioOnNow) while the list is up.
+  private var watchingOnNow = false
 
   // MARK: Data
 
@@ -1177,8 +1311,9 @@ enum RadioMark {
     -> (image: UIImage, key: String) {
     let info = RadioCatalog.shared.station(forStreamUrl: radio.url)
     if let src = info?.image, !src.isEmpty {
-      if let cached = RadioArtLoader.shared.cachedImage(for: src) { return (cached, "mark:\(src)") }
-      if let loadIfNeeded {
+      if let cached = RadioArtLoader.shared.cachedImage(for: src) {
+        if RadioArtLoader.isSharp(cached) { return (cached, "mark:\(src)") }
+      } else if let loadIfNeeded {
         Task { @MainActor in
           if await RadioArtLoader.shared.image(for: src) != nil { loadIfNeeded() }
         }
@@ -1386,6 +1521,9 @@ final class RadioShelfCell: UICollectionViewCell {
     kickerLabel.lineBreakMode = .byTruncatingTail
 
     playButton.addAction(UIAction { [weak self] _ in self?.onPlayTapped?() }, for: .touchUpInside)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(onNowChanged), name: RadioOnNow.didChange, object: nil
+    )
     for v in [art, initials, nameLabel, kickerLabel, playButton] {
       v.translatesAutoresizingMaskIntoConstraints = false
       contentView.addSubview(v)
@@ -1441,7 +1579,9 @@ final class RadioShelfCell: UICollectionViewCell {
 
   private func show(name: String, kicker: String, info: RadioCatalogStation?) {
     nameLabel.text = name
-    kickerLabel.text = kicker
+    slug = info?.slug
+    self.kicker = kicker
+    showOnNow()
     initials.text = RadioShelfCell.initials(of: name)
     // The word picture until (unless) the station's logo lands; the initials stay hidden.
     initials.isHidden = true
@@ -1452,20 +1592,39 @@ final class RadioShelfCell: UICollectionViewCell {
       word: name,
       color: color,
       side: side,
-      scale: traitCollection.displayScale > 0 ? traitCollection.displayScale : 3
+      scale: traitCollection.displayScale > 0 ? traitCollection.displayScale : 3,
+      // the word stays clear of the play disc in the corner (I-V13)
+      trailingReserve: showsPlayButton ? AlbumCollectionCell.playOverlayDiameter + 12 : 0
     )
     if let image = info?.image, !image.isEmpty {
       representedImage = image
       if let cached = RadioArtLoader.shared.cachedImage(for: image) {
-        art.image = cached
+        if RadioArtLoader.isSharp(cached) { art.image = cached }
         return
       }
       loadTask = Task { @MainActor [weak self] in
         let loaded = await RadioArtLoader.shared.image(for: image)
-        guard let self, representedImage == image, let loaded else { return }
-        art.image = loaded
+        guard let self, representedImage == image, let loaded, RadioArtLoader.isSharp(loaded)
+        else { return }
+        // A short fade, so the logo arrives rather than pops over the word picture.
+        UIView.transition(with: art, duration: 0.2, options: .transitionCrossDissolve) {
+          self.art.image = loaded
+        }
       }
     }
+  }
+
+  private var slug: String?
+  private var kicker = ""
+
+  /// Under the name: what's on now when the station's feed says, else where it's from.
+  private func showOnNow() {
+    kickerLabel.text = RadioOnNow.shared.line(for: slug) ?? kicker
+  }
+
+  @objc
+  private func onNowChanged() {
+    showOnNow()
   }
 
   private static func initials(of name: String) -> String {

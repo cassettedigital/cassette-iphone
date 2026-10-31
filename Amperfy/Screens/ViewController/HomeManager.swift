@@ -78,6 +78,10 @@ struct ShelfScore {
 /// twice on Home.
 @MainActor
 class HomeManager: NSObject {
+  /// The phone's Home, so Library's Playlists can list the same made-for-you playlists Home
+  /// shows (set by HomeVC; nil until Home has loaded).
+  static weak var live: HomeManager?
+
   // Remote-sync batch size (newest / recent album sync). Distinct from the
   // on-screen shelf sizing below.
   public static let sectionMaxItemCount = 20
@@ -745,10 +749,36 @@ class HomeManager: NSObject {
         )
       }
     }
+    preferPlayerForResume(sections: &sections, isOnPhone: isOnPhone)
     applyCloudMixes(mixes)
     orderedVisibleSections = sections
     cloudHeadings = headings
     return true
+  }
+
+  /// The player wins (I-S10): Resume never names one record while the mini player holds
+  /// another. Songs from a record on this phone: that record is the card. A station: the mini
+  /// player is the way back to it, so the card steps aside.
+  private func preferPlayerForResume(sections: inout [HomeSection], isOnPhone: OnPhoneCheck) {
+    guard let playing = player.currentlyPlaying else { return }
+    if playing.isRadio {
+      sections.removeAll { $0 == .resume }
+      data[.resume] = []
+      resumeLine = nil
+      resumeStartSong = nil
+      return
+    }
+    // The card's record, playlist or artist already holds the song on now: nothing to change.
+    guard let song = playing.asSong, let live = song.album, isOnPhone(live),
+          let shown = data[.resume]?.first,
+          !Self.song(song, belongsTo: shown.playableContainable)
+    else { return }
+    data[.resume] = [HomeItem(section: .resume, stableID: Self.stableID(for: live), playableContainable: live)]
+    resumeStartSong = nil
+    resumeLine = ResumeLine(
+      stableID: Self.stableID(for: live),
+      text: cloudResumeLine(for: live, song: nil, isOnPhone: isOnPhone)
+    )
   }
 
   /// The made-for-you row's playlists from the cloud's Home (Lately first), kept as Home's
@@ -971,7 +1001,10 @@ class HomeManager: NSObject {
     let hasPlayHistory = hasLiveAlbum || !entries.isEmpty
     let isOnPhone = makeOnPhoneCheck()
     merged.removeAll { !isOnPhone($0) }
-    if hasPlayHistory, !merged.isEmpty {
+    // A station in the player: the mini player is the way back, so no Resume card naming
+    // something else (I-S10).
+    let playerHoldsStation = player.currentlyPlaying?.isRadio == true
+    if hasPlayHistory, !merged.isEmpty, !playerHoldsStation {
       let resumeIndex = 0
       let resumeContainer = merged[resumeIndex]
       // Section-scoped HomeItem identity already makes Resume vs a shelf a

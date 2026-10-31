@@ -21,6 +21,7 @@
 
 import AmperfyKit
 import CoreData
+import SwiftUI
 import UIKit
 
 // MARK: - PlaylistsDiffableDataSource
@@ -173,7 +174,11 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
   }
 
   func updateContentUnavailable() {
-    applyEmptyState(emptyContentState, isEmpty: fetchedResultsController.fetchedObjects?.count ?? 0 == 0)
+    // Made-for-you playlists under an empty list of their own still make a page.
+    applyEmptyState(
+      emptyContentState,
+      isEmpty: fetchedResultsController.fetchedObjects?.count ?? 0 == 0 && madeForYouHost == nil
+    )
   }
 
   lazy var emptyContentState = ListEmptyState(empty: .cassetteEmpty(
@@ -208,6 +213,7 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
   override func viewIsAppearing(_ animated: Bool) {
     super.viewIsAppearing(animated)
     extendSafeAreaToAccountForMiniPlayer()
+    showMadeForYou()
     if appDelegate.storage.settings.user.isOfflineMode {
       isEditing = false
     }
@@ -220,6 +226,37 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
     } catch {
       self.appDelegate.eventLogger.report(topic: "Playlists Sync", error: error)
     }}
+  }
+
+  // MARK: Made for you
+
+  private var madeForYouHost: UIHostingController<MadeForYouList>?
+
+  /// The made-for-you playlists Home shows, under the person's own (I-M8). Built each time
+  /// the list appears, from Home's current set; nothing when Home has none.
+  private func showMadeForYou() {
+    madeForYouHost?.willMove(toParent: nil)
+    madeForYouHost?.view.removeFromSuperview()
+    madeForYouHost?.removeFromParent()
+    madeForYouHost = nil
+    let mixes = HomeManager.live?.madeForYouMixes.filter { !OneTapPlay.playables($0.songs).isEmpty } ?? []
+    guard !mixes.isEmpty else {
+      tableView.tableFooterView = nil
+      return
+    }
+    let host = UIHostingController(rootView: MadeForYouList(mixes: mixes) { [weak self] mix in
+      guard let self else { return }
+      navigationController?.pushViewController(MixDetailVC(account: account, mix: mix), animated: true)
+      navigationController?.navigationBar.prefersLargeTitles = false
+    })
+    host.view.backgroundColor = .clear
+    let width = tableView.bounds.width > 0 ? tableView.bounds.width : view.bounds.width
+    let height = host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude)).height
+    host.view.frame = CGRect(x: 0, y: 0, width: width, height: height)
+    addChild(host)
+    tableView.tableFooterView = host.view
+    host.didMove(toParent: self)
+    madeForYouHost = host
   }
 
   func updateRightBarButtonItems() {

@@ -163,12 +163,40 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
   func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
     let sectionCategors = PlayerSectionCategory(rawValue: indexPath.section)
     switch sectionCategors {
-    case .contextNext, .contextPrev, .none, .userQueue:
+    case .contextNext:
+      return isUpNextOneAlbum ? 48 + 2 * Self.oneAlbumRowMargin : PlayableTableCell.rowHeight
+    case .contextPrev, .none, .userQueue:
       return PlayableTableCell.rowHeight
     case .currentlyPlaying:
       return CurrentlyPlayingTableCell.rowHeight
     }
   }
+
+  /// A one-album Up Next's rows: the album page's 52pt (48 plus 2 above and below).
+  static var oneAlbumRowMargin: CGFloat { 2 }
+
+  /// Up Next is the rest of the album playing now: nothing queued by hand, and the song on now
+  /// and the songs after it (the first few dozen) from one album by one artist.
+  var isUpNextOneAlbum: Bool {
+    guard player.userQueueCount == 0, player.nextQueueCount > 0,
+          let current = player.currentlyPlaying?.asSong,
+          let album = current.album?.id
+    else { return false }
+    // Asked for every row's height: worked out once per song on now and queue length.
+    let key = "\(current.id)|\(player.nextQueueCount)"
+    if let memo = Self.oneAlbumMemo, memo.key == key { return memo.value }
+    let artist = current.creatorName
+    var value = true
+    for index in 0 ..< min(player.nextQueueCount, 40) {
+      guard let song = player.getPlayable(at: PlayerIndex(queueType: .next, index: index))?.asSong,
+            song.album?.id == album, song.creatorName == artist
+      else { value = false; break }
+    }
+    Self.oneAlbumMemo = (key, value)
+    return value
+  }
+
+  private static var oneAlbumMemo: (key: String, value: Bool)?
 
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
     switch PlayerSectionCategory(rawValue: indexPath.section) {
@@ -177,11 +205,17 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
       guard let playerIndex = PlayerIndex.create(from: indexPath),
             let playable = player.getPlayable(at: playerIndex)
       else { return cell }
+      // One album in line: track numbers, not the same cover and artist on every row (I-V15).
+      let oneAlbum = PlayerSectionCategory(rawValue: indexPath.section) == .contextNext && isUpNextOneAlbum
       cell.display(
         playable: playable,
         playContextCb: { _ in PlayContext() },
         rootView: self,
-        playerIndexCb: convertCellViewToPlayerIndex
+        playerIndexCb: convertCellViewToPlayerIndex,
+        isDislayAlbumTrackNumberStyle: oneAlbum,
+        hideArtistSubtitle: oneAlbum,
+        // the album page's 52pt rows
+        options: oneAlbum ? PlayableCellOptions(verticalMargin: Self.oneAlbumRowMargin) : .standard
       )
       // cassette Patch 024: queue rows over the popup player's gradient
       // backdrop. Clearing both the cell and its content view stops

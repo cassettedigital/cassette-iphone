@@ -335,6 +335,15 @@ class PlayerUIHandler: NSObject {
         artworkImage.display(image: liveArt)
         return
       }
+      // cassette (BUG-751, the founder 2026-10-31): a station with no cover for what's on
+      // shows its own mark (logo, else word art), never an empty square.
+      if let radio = playableInfo.asRadio {
+        artworkImage.display(image: RadioMark.image(for: radio, loadIfNeeded: { [weak self, weak artworkImage] in
+          guard let self, let artworkImage else { return }
+          refreshArtwork(artworkImage: artworkImage)
+        }).image)
+        return
+      }
       artworkImage.display(entity: playableInfo)
     } else {
       switch player.playerMode {
