@@ -55,6 +55,20 @@ public struct LibraryMoodTags: Codable, Sendable, Equatable {
   }
 }
 
+struct AlbumGenresResponse: Decodable {
+  struct Item: Decodable {
+    let groupKey: String
+    let genre: String
+
+    enum CodingKeys: String, CodingKey {
+      case groupKey = "group_key"
+      case genre
+    }
+  }
+
+  let albums: [Item]
+}
+
 struct LibraryMoodsResponse: Decodable {
   struct Track: Decodable {
     let cassetteLocalId: String
@@ -161,5 +175,85 @@ public final class LibraryMoods {
   private static var fileURL: URL {
     let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
     return base.appendingPathComponent("CassetteMoods/library-moods.json")
+  }
+}
+
+// MARK: - LibraryGenres
+
+/// Cassette 2026-10-31 (the founder: "We should put SOMETHING on there"): a genre for each album
+/// on this phone whose songs carry none, from GET /api/sync/album-genres (the person's own
+/// genre, else our catalog's at the taxonomy floor). Library > Genres and Search's genre tiles
+/// read song and album genres, and the files the computer rips carry none (BUG-749). Only empty
+/// places are filled: a song whose file names a genre keeps it, and once an album has a genre it
+/// keeps it, so a later catalog change never re-dresses the library. Asked twice a day.
+@MainActor
+public final class LibraryGenres {
+  public static let shared = LibraryGenres()
+  private static let lastFetchKey = "cassette.libraryGenres.lastFetchAt"
+  private static let refreshInterval: TimeInterval = 12 * 3600
+  /// Genres this fills are filed under this id prefix, so the owned-genre lists (which skip a
+  /// genre with no id) count them and a server genre of the same name never collides.
+  private static let idPrefix = "cassette-genre:"
+
+  private init() {}
+
+  public func applyIfDue(force: Bool = false) async {
+    let defaults = UserDefaults.standard
+    let last = defaults.object(forKey: Self.lastFetchKey) as? Date ?? .distantPast
+    guard force || Date().timeIntervalSince(last) > Self.refreshInterval else { return }
+    guard let accountInfo = AmperKit.shared.storage.settings.accounts.active,
+          let items = try? await CassetteSyncAPI.shared.getAlbumGenres()
+    else { return }
+    defaults.set(Date(), forKey: Self.lastFetchKey)
+
+    let library = AmperKit.shared.storage.main.library
+    let account = library.getAccount(info: accountInfo)
+    var genres = [String: Genre]()
+    func genre(named name: String) -> Genre {
+      if let known = genres[name] { return known }
+      let found = library.getGenre(for: account, id: Self.idPrefix + name) ?? {
+        let made = library.createGenre(account: account)
+        made.id = Self.idPrefix + name
+        made.name = name
+        return made
+      }()
+      genres[name] = found
+      return found
+    }
+    /// A file's genre: one with a name (the phone holds a few nameless ones from old syncs).
+    func hasOwnGenre(_ song: Song) -> Bool {
+      !(song.genre?.managedObject.name ?? "").isEmpty
+    }
+
+    var filled = 0
+    var changed = false
+    for item in items {
+      guard let album = library.getAlbum(for: account, id: item.groupKey, isDetailFaultResolution: false)
+      else { continue }
+      let songs = album.songs.compactMap { $0.asSong }
+      // The album's files speak for it: leave it.
+      guard !songs.contains(where: hasOwnGenre) else { continue }
+      let given: Genre
+      if let existing = album.genre, !(existing.managedObject.name ?? "").isEmpty {
+        // Given one before: it keeps that one (a later catalog change doesn't move it). One
+        // from anywhere else is the album's own.
+        guard existing.id.hasPrefix(Self.idPrefix) else { continue }
+        given = existing
+      } else {
+        given = genre(named: item.genre)
+        album.genre = given
+        filled += 1
+        changed = true
+      }
+      // A library sync can hand a song a nameless genre again; the album's comes back.
+      for song in songs where song.genre?.id != given.id {
+        song.genre = given
+        changed = true
+      }
+    }
+    guard changed else { return }
+    library.saveContext()
+    print("Cassette genres: \(filled) albums given a genre, of \(items.count) offered")
+    CassetteOwnershipNotifier.shared.ownershipDidChangeNow()
   }
 }

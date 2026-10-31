@@ -1056,6 +1056,14 @@ public final class CassetteSyncAPI: @unchecked Sendable {
     _ = try await send(method: "PUT", path: "/api/sync/intents/\(id)", json: body)
   }
 
+  /// A genre for each album in this library, by the album's group key, the id this phone files
+  /// it under (GET /api/sync/album-genres): the person's own genre, else the catalog's from our
+  /// own tagging. Albums with neither are absent.
+  public func getAlbumGenres() async throws -> [(groupKey: String, genre: String)] {
+    let data = try await get(path: "/api/sync/album-genres")
+    return try JSONDecoder().decode(AlbumGenresResponse.self, from: data).albums.map { ($0.groupKey, $0.genre) }
+  }
+
   /// The mood, energy and valence tags of the songs in this library, keyed by
   /// cassette_local_id (GET /api/sync/library-moods). Untagged songs are absent.
   public func getLibraryMoods() async throws -> [String: LibraryMoodTags] {

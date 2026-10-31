@@ -174,6 +174,8 @@ public final class IntentExecutor {
     await PhoneRemoval.sendPending()
     // Mood tags for More Like Lately and the Lately mix; refreshes at most twice a day.
     await LibraryMoods.shared.refreshIfDue()
+    // Genres for albums whose files have none (Library > Genres); at most twice a day.
+    await LibraryGenres.shared.applyIfDue()
     // Home, made in the cloud (One Home), which carries the made-for-you playlists. Their own
     // set is only asked for while no Home has ever arrived (the stand-in Home reads it).
     await HomeStore.shared.refreshIfDue()

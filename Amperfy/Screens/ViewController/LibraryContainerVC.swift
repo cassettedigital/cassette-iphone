@@ -51,13 +51,16 @@ final class LibraryContainerVC: UIViewController {
   /// cassette 2026-10-06: Radios is BACK in the dropdown. The hub now carries a
   /// curated station list (docs/reference/CASSETTE_RADIO.md) and this screen is
   /// how the phone plays it; Patch 104's removal stands only in history.
+  /// 2026-10-31 (the founder): Radio stays in Library, right after Playlists, not a tab of its
+  /// own: "plenty of folks won't use the radio, others will treat radio like their own little
+  /// playlist".
   private static let dropdownCategories: [LibraryDisplayType] = [
     .artists,
     .albums,
     .songs,
     .playlists,
-    .genres,
     .radios,
+    .genres,
   ]
 
   // MARK: - State
