@@ -463,16 +463,27 @@ class LargeCurrentlyPlayingPlayerView: UIView, UIGestureRecognizerDelegate {
     row.alignment = .center
     row.spacing = 8
     row.isAccessibilityElement = true
+    row.accessibilityTraits = .button
     row.isHidden = true
+    // the station's name opens its page (what it just played, what's next, similar stations),
+    // the way a record's title opens the record
+    row.isUserInteractionEnabled = true
+    row.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(stationRowPressed)))
     return row
   }()
 
+  @objc
+  private func stationRowPressed() {
+    rootView?.openStationPage()
+  }
+
   private func refreshStationRow() {
-    guard let titleStack = albumContainerView.superview as? UIStackView,
-          let host = titleStack.superview else { return }
+    guard let titleStack = albumContainerView.superview as? UIStackView else { return }
     if stationRow.superview == nil {
       stationRow.translatesAutoresizingMaskIntoConstraints = false
-      host.addSubview(stationRow)
+      // on the sheet itself, not the title's box: the row sits above that box, where its
+      // taps never arrived
+      addSubview(stationRow)
       NSLayoutConstraint.activate([
         stationRow.leadingAnchor.constraint(equalTo: titleStack.leadingAnchor),
         stationRow.trailingAnchor.constraint(lessThanOrEqualTo: titleStack.trailingAnchor),

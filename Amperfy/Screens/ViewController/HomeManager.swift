@@ -757,17 +757,11 @@ class HomeManager: NSObject {
   }
 
   /// The player wins (I-S10): Resume never names one record while the mini player holds
-  /// another. Songs from a record on this phone: that record is the card. A station: the mini
-  /// player is the way back to it, so the card steps aside.
+  /// another. Songs from a record on this phone: that record is the card, swapped in place. A
+  /// station leaves the card on the last record, the way back to it: taking the card away
+  /// slid every shelf up the moment a station started (the founder, 2026-10-31).
   private func preferPlayerForResume(sections: inout [HomeSection], isOnPhone: OnPhoneCheck) {
-    guard let playing = player.currentlyPlaying else { return }
-    if playing.isRadio {
-      sections.removeAll { $0 == .resume }
-      data[.resume] = []
-      resumeLine = nil
-      resumeStartSong = nil
-      return
-    }
+    guard let playing = player.currentlyPlaying, !playing.isRadio else { return }
     // The card's record, playlist or artist already holds the song on now: nothing to change.
     guard let song = playing.asSong, let live = song.album, isOnPhone(live),
           let shown = data[.resume]?.first,
@@ -1001,10 +995,7 @@ class HomeManager: NSObject {
     let hasPlayHistory = hasLiveAlbum || !entries.isEmpty
     let isOnPhone = makeOnPhoneCheck()
     merged.removeAll { !isOnPhone($0) }
-    // A station in the player: the mini player is the way back, so no Resume card naming
-    // something else (I-S10).
-    let playerHoldsStation = player.currentlyPlaying?.isRadio == true
-    if hasPlayHistory, !merged.isEmpty, !playerHoldsStation {
+    if hasPlayHistory, !merged.isEmpty {
       let resumeIndex = 0
       let resumeContainer = merged[resumeIndex]
       // Section-scoped HomeItem identity already makes Resume vs a shelf a

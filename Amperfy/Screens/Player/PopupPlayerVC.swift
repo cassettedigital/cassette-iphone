@@ -312,6 +312,37 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
     hostingSplitVC.visualizePopupPlayer(direction: .close, animated: true)
   }
 
+  /// The record the station's song matched on Cassette, if any: Now Playing's album key and
+  /// its ⋯ menu's Go to Album both read it.
+  var radioAlbumSlug: String? {
+    guard player.currentlyPlaying?.isRadio == true else { return nil }
+    return player.currentRadioLive?.albumSlug
+  }
+
+  /// Go to the record the station is playing, without leaving the app: the person's own copy
+  /// when they have it, else its page, in the Library tab with the station still playing.
+  func openRadioAlbum() {
+    guard let slug = radioAlbumSlug,
+          let account = player.currentlyPlaying?.account else { return }
+    let live = player.currentRadioLive
+    RecordOpener.open(
+      albumSlug: slug,
+      title: live?.albumTitle,
+      placeholder: player.currentRadioArtwork,
+      account: account
+    ) { [weak self] vc in
+      self?.closePopupPlayerAndDisplayInLibraryTab(vc: vc)
+    }
+  }
+
+  /// The playing station's page (what it just played, what's next, similar stations, Save).
+  func openStationPage() {
+    guard let radio = player.currentlyPlaying?.asRadio,
+          let account = radio.account,
+          let info = RadioCatalog.shared.station(forStreamUrl: radio.url) else { return }
+    closePopupPlayerAndDisplayInLibraryTab(vc: RadioStationVC(account: account, station: info))
+  }
+
   func closePopupPlayerAndDisplayInLibraryTab(vc: UIViewController) {
     guard let hostingSplitVC = AppDelegate.mainWindowHostVC else { return }
     hostingSplitVC.visualizePopupPlayer(direction: .close, animated: true, completion: { () in
@@ -427,6 +458,8 @@ extension PopupPlayerVC: MusicPlayable {
 
   func didNowPlayingInfoChange() {
     refreshCurrentlyPlayingInfoView()
+    // a new song on a station may or may not have matched a record: the album key follows it
+    controlView?.refreshView()
   }
 
   func didShuffleChange() {}

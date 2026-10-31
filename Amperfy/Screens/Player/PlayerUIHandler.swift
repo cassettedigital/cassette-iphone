@@ -493,6 +493,21 @@ class PlayerUIHandler: NSObject {
         audioInfoLabel?.isHidden = true
         playTypeIcon?.isHidden = true
         liveLabel.isHidden = false
+        // a station: no empty track, the word LIVE after a dot in the live orange (the founder,
+        // 2026-10-31: the radio sheet read as an empty album player)
+        // set once: a label's new text asks for layout, and this runs on every refresh
+        if style == .popupPlayer, liveLabel.attributedText?.string != "● LIVE" {
+          timeSlider.alpha = 0
+          let live = NSMutableAttributedString(
+            string: "● ",
+            attributes: [.foregroundColor: UIColor.cassette(.accentProgress), .font: liveLabel.font as Any]
+          )
+          live.append(NSAttributedString(
+            string: "LIVE",
+            attributes: [.foregroundColor: UIColor.cassette(.textSecondary), .font: liveLabel.font as Any, .kern: 1.2]
+          ))
+          liveLabel.attributedText = live
+        }
         timeSlider.minimumValue = 0.0
         timeSlider.maximumValue = 1.0
         timeSlider.value = 0.0
@@ -525,6 +540,7 @@ class PlayerUIHandler: NSObject {
         )
 
         liveLabel.isHidden = true
+        timeSlider.alpha = 1
         timeSlider.layer.mask = nil
       }
     } else {

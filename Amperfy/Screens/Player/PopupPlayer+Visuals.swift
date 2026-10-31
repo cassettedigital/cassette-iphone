@@ -114,19 +114,9 @@ extension PopupPlayerVC {
         // Cassette, the first item goes to that record, without leaving the app: the
         // person's own copy when they have it, else the record's page (RecordOpener),
         // shown in the Library tab with the player closed and the station still playing.
-        if currentlyPlaying.isRadio,
-           let player = (rootView as? PopupPlayerVC)?.player,
-           let live = player.currentRadioLive,
-           let slug = live.albumSlug,
-           let account = currentlyPlaying.account {
-          let title = "Go to Album"
-          let art = player.currentRadioArtwork
-          actions.insert(UIAction(title: title, image: CassetteIcon.album.uiImage) { [weak rootView] _ in
-            MainActor.assumeIsolated {
-              RecordOpener.open(albumSlug: slug, title: live.albumTitle, placeholder: art, account: account) { vc in
-                (rootView as? PopupPlayerVC)?.closePopupPlayerAndDisplayInLibraryTab(vc: vc)
-              }
-            }
+        if (rootView as? PopupPlayerVC)?.radioAlbumSlug != nil {
+          actions.insert(UIAction(title: "Go to Album", image: CassetteIcon.album.uiImage) { [weak rootView] _ in
+            MainActor.assumeIsolated { (rootView as? PopupPlayerVC)?.openRadioAlbum() }
           }, at: 0)
         }
         return actions

@@ -97,6 +97,21 @@ class PlayerControlView: UIView {
   /// by default in Cassette) flank at the eighth points (0.25 / 1.75). Set once.
   private var didSetupCassetteTransportLayout = false
 
+  /// A station's two keys either side of Stop, where Previous and Next sit for a record (the
+  /// founder, 2026-10-31: the cleaned-up radio sheet looked like an empty album player). Left:
+  /// save the station, the one save mark (+ / ✓). Right: the record the song on air matched,
+  /// greyed when it matched none.
+  private let stationSaveButton = UIButton(type: .system)
+  private let stationAlbumButton = UIButton(type: .system)
+  /// Drawn once: refreshView runs on every layout pass, and a freshly drawn image set on the
+  /// key asked for another layout, a loop that froze the sheet.
+  private lazy var stationSaveImages = (
+    save: CassetteIcon.plus.uiImage(size: .prominent),
+    saved: CassetteIcon.check.uiImage(size: .prominent)
+  )
+  /// The save mark last drawn, so the key's image changes only when the state does.
+  private var shownStationSaved: Bool?
+
   /// The scrubber's played part and thumb in the playing record's colour (founder,
   /// 2026-10-21), the colour of its artist name above, instead of brand orange.
   @objc
@@ -334,6 +349,29 @@ class PlayerControlView: UIView {
     pin(skipBackwardButton, centerXMultiplier: 0.25)
     pin(skipForwardButton, centerXMultiplier: 1.75)
 
+    // A station's keys take Previous and Next's places (refreshStationKeys shows them).
+    stationSaveButton.addAction(UIAction { [weak self] _ in self?.stationSavePressed() }, for: .primaryActionTriggered)
+    stationAlbumButton.addAction(UIAction { [weak self] _ in
+      self?.rootView?.openRadioAlbum()
+    }, for: .primaryActionTriggered)
+    stationAlbumButton.setImage(CassetteIcon.album.uiImage(size: .prominent), for: .normal)
+    stationAlbumButton.accessibilityLabel = "Go to Album"
+    for key in [stationSaveButton, stationAlbumButton] {
+      key.tintColor = UIColor.cassette(.textPrimary)
+      key.isHidden = true
+      NSLayoutConstraint.activate([
+        key.widthAnchor.constraint(equalToConstant: 56),
+        key.heightAnchor.constraint(equalToConstant: 56),
+      ])
+    }
+    pin(stationSaveButton, centerXMultiplier: 0.5)
+    pin(stationAlbumButton, centerXMultiplier: 1.5)
+    NotificationCenter.default.addObserver(
+      forName: RadioSaved.didChange, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.refreshStationKeys() }
+    }
+
     // phone-taste (play-disc): the disc is a fixed 78pt circle, centred on the row.
     NSLayoutConstraint.activate([
       playButton.widthAnchor.constraint(equalToConstant: Self.playDiscDiameter),
@@ -403,7 +441,43 @@ class PlayerControlView: UIView {
     previousButton.isHidden = isStation
     nextButton.isHidden = isStation
     displayPlaylistButton.isHidden = isStation
+    if isStation {
+      skipBackwardButton.isHidden = true
+      skipForwardButton.isHidden = true
+    }
+    refreshStationKeys()
     refreshPlayerModeChangeButton()
+  }
+
+  /// The station's catalog entry, for its save mark (nil for a hub station the dial doesn't know).
+  private var playingStation: RadioCatalogStation? {
+    guard let radio = player.currentlyPlaying?.asRadio else { return nil }
+    return RadioCatalog.shared.station(forStreamUrl: radio.url)
+  }
+
+  private func refreshStationKeys() {
+    let isStation = player.currentlyPlaying?.isRadio == true
+    let station = isStation ? playingStation : nil
+    stationSaveButton.isHidden = station == nil
+    stationAlbumButton.isHidden = !isStation
+    if let station {
+      let saved = RadioSaved.shared.isSaved(station.slug)
+      if saved != shownStationSaved {
+        shownStationSaved = saved
+        stationSaveButton.setImage(saved ? stationSaveImages.saved : stationSaveImages.save, for: .normal)
+      }
+      stationSaveButton.accessibilityLabel = saved ? "Saved. Remove \(station.name) from your stations" : "Save \(station.name)"
+    }
+    let hasAlbum = rootView?.radioAlbumSlug != nil
+    if stationAlbumButton.isEnabled != hasAlbum {
+      stationAlbumButton.isEnabled = hasAlbum
+      stationAlbumButton.alpha = hasAlbum ? 1 : 0.3
+    }
+  }
+
+  private func stationSavePressed() {
+    guard let station = playingStation else { return }
+    RadioSaved.shared.toggle(station.slug)
   }
 
   func refreshPlayerModeChangeButton() {

@@ -297,6 +297,16 @@ final class HomeVC: UICollectionViewController {
       serverUrl: appDelegate.storage.settings.accounts.activeSetting.read.loginCredentials?.serverUrl
     )
     let line = CassetteSyncStatus.statusLine(hubName: hubName)
+    // iOS 26: the line is the bar's own subtitle under "Home", Apple's place for a screen's
+    // status. Nothing in the page moves when it comes and goes, and nothing scrolls under it
+    // (the founder, 2026-10-31: the shelves slid about and showed through the floating line).
+    if #available(iOS 26.0, *) {
+      navigationItem.subtitle = line
+      syncBanner.show(nil, isSyncing: false)
+      collectionView.contentInset.top = 0
+      collectionView.verticalScrollIndicatorInsets.top = 0
+      return
+    }
     let active = line != nil
     syncBanner.show(line, isSyncing: CassetteSyncStatus.isHubReachable)
 
@@ -332,6 +342,13 @@ final class HomeVC: UICollectionViewController {
       .font: UIFont.cassette(.navTitle),
       .foregroundColor: UIColor.cassette(.textPrimary),
     ]
+    if #available(iOS 26.0, *) {
+      // the sync line under the title (updateSyncBannerPresentation), in the rows' quiet type
+      appearance.subtitleTextAttributes = [
+        .font: UIFont.cassette(.metadata),
+        .foregroundColor: UIColor.cassette(.textSecondary),
+      ]
+    }
     navigationItem.standardAppearance = appearance
     navigationItem.scrollEdgeAppearance = appearance
     if #available(iOS 15.0, *) {
