@@ -746,9 +746,14 @@ class MiniPlayerView: UIView {
 
       textStack.leadingAnchor.constraint(equalTo: artworkImage.trailingAnchor, constant: 10),
       textStack.trailingAnchor.constraint(equalTo: playButton.leadingAnchor, constant: -8),
-      textStack.centerYAnchor.constraint(equalTo: artworkImage.centerYAnchor),
+      // centred on the cover unless that would run the artist into the progress line, which
+      // sits on the pill's bottom edge: then the words ride up (the founder, 2026-11-01: "Djo"
+      // sat on the line)
+      { let c = textStack.centerYAnchor.constraint(equalTo: artworkImage.centerYAnchor)
+        c.priority = .defaultHigh
+        return c }(),
       textStack.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 3),
-      textStack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -3),
+      textStack.bottomAnchor.constraint(lessThanOrEqualTo: timeSlider.topAnchor, constant: -2),
 
       playButton.centerYAnchor.constraint(equalTo: artworkImage.centerYAnchor, constant: 0),
       playButton.widthAnchor.constraint(equalToConstant: 30),
