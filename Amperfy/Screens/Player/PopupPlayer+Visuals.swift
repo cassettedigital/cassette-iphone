@@ -136,7 +136,6 @@ extension PopupPlayerVC {
     }
     let host = UIHostingController(rootView: panel)
     host.view.backgroundColor = UIColor.cassette(.surfaceSunken)
-    host.overrideUserInterfaceStyle = .dark
     if let sheet = host.sheetPresentationController {
       sheet.detents = [.large()]
       sheet.prefersGrabberVisible = true

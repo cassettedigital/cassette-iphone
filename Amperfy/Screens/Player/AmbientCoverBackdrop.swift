@@ -129,6 +129,13 @@ final class AmbientBackdropModel: ObservableObject {
   var image: UIImage?
   @Published
   var isPlaying: Bool = false
+  /// The room the cover lights: the record's own colour (CoverTint.room), set with the tint.
+  @Published
+  var room: Color = Color(uiColor: CoverTint.neutral.room)
+  /// Up Next is showing, its rows from the top of the sheet down: the glass is thick
+  /// everywhere, not only under the controls.
+  @Published
+  var isListShown: Bool = false
 }
 
 // MARK: - AmbientCoverBackdrop
@@ -142,13 +149,15 @@ struct AmbientCoverBackdrop: View {
   @State
   private var tiny: UIImage?
 
-  /// Warm-dark base — the popup player's own background token, so the scrim
-  /// and the dim areas blend seamlessly into the room.
-  private let base = Color(uiColor: UIColor.cassette(.surfaceSunken))
+  /// The room: the record's own colour, the same in both looks (the founder, 2026-11-01).
+  private var room: Color { model.room }
+  /// The glass: the screen's own paper, light or dark, laid over the room and the cover. It
+  /// is what keeps the app's words and buttons in their usual colours on any cover.
+  private let glass = Color(uiColor: UIColor.cassette(.surfaceSunken))
 
   var body: some View {
     ZStack {
-      base
+      room
 
       if let tiny {
         GeometryReader { geo in
@@ -161,14 +170,10 @@ struct AmbientCoverBackdrop: View {
             // off-main in AmbientBackdropCache, so first open compiles no
             // render-time blur shader on the main thread (the audio-glitch
             // fix). The bilinear upscale-to-fill keeps it soft.
-            // Restrained: quiet/dark covers stay quiet (a dim cover → a dim
-            // room is the intended behaviour, not a bug). Slight lift while
-            // playing, settling when paused.
-            // cassette: dialled back from 0.68/0.5 — a bright cover (pale or
-            // high-key artwork) washed the whole queue in its own colour and
-            // the rows lost contrast against it. The lamp should light the
-            // room, not be the room.
-            .opacity(model.isPlaying ? 0.5 : 0.38)
+            // Over the coloured room and under the glass (2026-11-01), so the cover
+            // shows strongly: the glass, not a dimmed cover, keeps the rows legible.
+            // Slight lift while playing, settling when paused.
+            .opacity(model.isPlaying ? 0.75 : 0.62)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.9), value: model.isPlaying)
         }
         .transition(.opacity)
@@ -179,20 +184,22 @@ struct AmbientCoverBackdrop: View {
         )
       }
 
-      // Warm scrim: keep the room dim and the title/controls legible. Radial
-      // darken toward the edges + a stronger floor under the transport.
-      RadialGradient(
-        colors: [.clear, base.opacity(0.68)],
-        center: .init(x: 0.5, y: 0.36),
-        startRadius: 80,
-        endRadius: 520
-      )
+      // The glass: thinnest around the cover, so the record's colour shows most there, and
+      // thick under the title and the controls, where the words need the paper's contrast
+      // (4.5:1 for the quiet type on light and on dark, measured on pale and dark covers).
       LinearGradient(
-        colors: [.clear, base.opacity(0.85)],
-        startPoint: .center,
+        stops: [
+          .init(color: glass.opacity(model.isListShown ? 0.8 : 0.5), location: 0),
+          .init(color: glass.opacity(model.isListShown ? 0.82 : 0.62), location: 0.42),
+          .init(color: glass.opacity(0.86), location: 0.62),
+          .init(color: glass.opacity(0.9), location: 1),
+        ],
+        startPoint: .top,
         endPoint: .bottom
       )
     }
+    .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: model.room)
+    .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: model.isListShown)
     .ignoresSafeArea()
     .task(id: model.coverID) {
       guard let image = model.image else { tiny = nil; return }

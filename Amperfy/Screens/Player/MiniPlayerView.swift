@@ -795,9 +795,8 @@ class MiniPlayerView: UIView {
   public func openPlayerView(completion: (() -> ())? = nil) {
     guard let hostVC = AppDelegate.mainWindowHostVC as? UIViewController else { return }
     let popupPlayer = PopupPlayerVC()
-    // Now Playing stays the dim room lit by the cover in both looks, as Apple Music's player
-    // does (2026-10-31, I-T1); the rest of the app follows light or dark.
-    popupPlayer.overrideUserInterfaceStyle = .dark
+    // Now Playing follows light or dark like the rest of the app: the cover's coloured room
+    // seen through light glass or dark glass (the founder, 2026-11-01; it was held dark, I-T1).
     popupPlayer.modalPresentationStyle = .pageSheet
     if let sheet = popupPlayer.sheetPresentationController {
       sheet.detents = [.large()]

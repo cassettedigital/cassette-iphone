@@ -255,7 +255,6 @@ struct EqualizerPanelView: View {
         Spacer(minLength: 12)
       }
     }
-    .preferredColorScheme(.dark)
     .onAppear(perform: load)
     .onDisappear {
       // Undo any A/B bypass: restore the persisted enabled-state on the player.

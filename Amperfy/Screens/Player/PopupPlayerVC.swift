@@ -67,7 +67,10 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
   /// observe that model. `.neutral` until a cover is read, and for a track without one.
   var coverTint: CoverTint = .neutral
   /// The look the sheet is showing (cover or Up Next), so a station can hold it on the cover.
-  var shownDisplayStyle: PlayerDisplayStyle?
+  var shownDisplayStyle: PlayerDisplayStyle? {
+    // Up Next's rows run to the top of the sheet: the glass thickens there while it shows
+    didSet { ambientBackdropModel.isListShown = shownDisplayStyle == .compact }
+  }
 
   /// What the sheet shows: the person's choice, except that a station has no Up Next to show
   /// (the founder, 2026-10-31: no queue when we can't see what's coming), so it shows the cover
@@ -381,6 +384,8 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
   /// `coverTint` itself when it is built or its traits change, because the now row is only
   /// made on the first visit to the queue.
   func applyCoverTint() {
+    ambientBackdropModel.room = Color(uiColor: coverTint.room)
+    controlView?.applyNowPlayingTint()
     largeCurrentlyPlayingView?.applyCoverTint(coverTint)
     currentlyPlayingTableCell?.applyCoverTint(coverTint)
     contextNextQueueSectionHeader?.applyCoverTint(coverTint)

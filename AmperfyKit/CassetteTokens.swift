@@ -228,6 +228,10 @@ public struct CoverTint: Sendable, Hashable {
   }
 
   public var base: UIColor { CoverTintMath.color(baseRGB) }
+  /// Now Playing's room: the cover's own hue at one steady strength, so a blue record plays in a
+  /// blue room. The sheet sees it through glass of the screen's own paper, light or dark (the
+  /// founder, 2026-11-01), so the app's words and buttons keep their colours on top.
+  public var room: UIColor { CoverTintMath.color(CoverTintMath.room(baseRGB)) }
   public var glow: UIColor { CoverTintMath.color(glowRGB) }
   /// The record's colour as text, following the screen's appearance.
   public var text: UIColor { UIColor.cassetteFollowing(dark: textRGB, light: textLightRGB) }
@@ -459,6 +463,15 @@ enum CoverTintMath {
     let x = max(la, lb)
     let y = min(la, lb)
     return (x + 0.05) / (y + 0.05)
+  }
+
+  /// Now Playing's room for a cover colour: its hue with enough saturation to read as that
+  /// colour, at a middle lightness the light and the dark glass both sit over. A grey cover
+  /// gives the warm neutral's room.
+  static func room(_ base: UInt32) -> UInt32 {
+    let (h, s, _) = hsl(base)
+    if s < 0.08 { return hslToRGB(0.09, 0.25, 0.45) }
+    return hslToRGB(h, min(max(s, 0.4), 0.65), 0.45)
   }
 
   /// The cover's colour, as light as it needs to be to read as text on the page.
