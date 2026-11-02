@@ -6,8 +6,10 @@
 //  started it decides how: an album carries on with another whole album, anything else
 //  (a mix, a playlist, one song from search, an artist on shuffle) carries on with songs.
 //  The pick is the cloud's (POST /api/sync/keep-playing: the made-for-you recipe seeded from
-//  the queue, founder 2026-11-02), asked for as soon as the queue sheet or the last song needs
-//  it. Until it comes, and whenever it cannot (offline, an error), the phone picks from its own
+//  the queue, founder 2026-11-02), and so is the call between album and songs and the words
+//  under THEN: one algorithm for every surface (apps/cassette/src/lib/keep-playing/contract.ts).
+//  The phone sends what started the queue and asks as each song starts, so the answer is held
+//  before the queue runs out. Until it comes, and whenever it cannot (offline, an error), the phone picks from its own
 //  music with the maths the album page's MORE LIKE and the old Lately draw use, so it still
 //  works in the car. Repeat wins: with repeat on, keep playing steps aside until repeat is off.
 //
@@ -88,6 +90,7 @@ public final class KeepPlaying {
 
   private static let onKey = "cassette.keepPlaying"
   private static let kindKey = "cassette.keepPlaying.kind"
+  private static let startedKey = "cassette.keepPlaying.started"
   /// How many songs one songs pick holds; the next pick follows on when they run out.
   private static let songsPerPick = 20
   /// Albums ranked for one album pick; Swap walks down them.
@@ -107,7 +110,15 @@ public final class KeepPlaying {
     isOn && repeatMode == .off
   }
 
-  /// How the queue was started, kept across launches with the queue itself.
+  /// What started the queue (or the last pick added), by song id, kept across launches with the
+  /// queue: the cloud reads album or songs from it.
+  private var startedSongIDs: [String] {
+    get { UserDefaults.standard.stringArray(forKey: Self.startedKey) ?? [] }
+    set { UserDefaults.standard.set(newValue, forKey: Self.startedKey) }
+  }
+
+  /// How the queue was started, by the phone's own rule: for its stand-in pick only (the cloud
+  /// decides for itself from `startedSongIDs`). Kept across launches with the queue.
   public private(set) var kind: Kind {
     get { Kind(rawValue: UserDefaults.standard.string(forKey: Self.kindKey) ?? "") ?? .songs }
     set { UserDefaults.standard.set(newValue.rawValue, forKey: Self.kindKey) }
@@ -118,7 +129,8 @@ public final class KeepPlaying {
   private struct Entry {
     let key: String
     var albums: [(album: Album, songs: [AbstractPlayable])]
-    var albumAnswer: String
+    /// The words under THEN: the cloud's when it answered, else the phone's own.
+    var heading: String
     var cursor: Int
     var songs: [AbstractPlayable]
     /// The cloud's answer, not the phone's stand-in.
@@ -153,6 +165,7 @@ public final class KeepPlaying {
     let songs = playables.compactMap(\.asSong)
     let albums = Set(songs.compactMap { $0.album?.id })
     kind = songs.count >= 2 && albums.count == 1 ? .album : .songs
+    startedSongIDs = songs.map(\.id)
     entry = nil
     cloudEntry = nil
     askedCloud.removeAll()
@@ -165,8 +178,9 @@ public final class KeepPlaying {
     pick(for: queue, waitForIndex: false)
   }
 
-  /// The last song of the queue has started: work the pick out now (the index builds off
-  /// the main thread), so it is ready when the song ends and nothing stalls then.
+  /// A song has started: work the pick out now (the cloud is asked once per queue end, the
+  /// phone's index builds off the main thread), so it is held well before the queue runs out,
+  /// even if the phone goes offline in between.
   public func prepare(queue: Queue) {
     _ = pick(for: queue, waitForIndex: false)
   }
@@ -222,10 +236,10 @@ public final class KeepPlaying {
     if !entry.albums.isEmpty {
       guard entry.cursor < entry.albums.count else { return nil }
       let choice = entry.albums[entry.cursor]
-      return Pick(kind: .album, album: choice.album, songs: choice.songs, answer: entry.albumAnswer)
+      return Pick(kind: .album, album: choice.album, songs: choice.songs, answer: entry.heading)
     }
     guard !entry.songs.isEmpty else { return nil }
-    return Pick(kind: .songs, album: nil, songs: entry.songs, answer: "more like this")
+    return Pick(kind: .songs, album: nil, songs: entry.songs, answer: entry.heading)
   }
 
   // MARK: - The cloud's pick
@@ -240,12 +254,14 @@ public final class KeepPlaying {
     let seedIDs = songs.suffix(10).compactMap { localIDBySongID[$0.id] }
     guard !seedIDs.isEmpty else { return }
     let exclude = songs.compactMap { localIDBySongID[$0.id] }
+    let started = startedSongIDs.compactMap { localIDBySongID[$0] }
     let kind = kind
     Task { @MainActor in
       let answer: KeepPlayingAnswer
       do {
         answer = try await CassetteSyncAPI.shared.postKeepPlaying(
           kind: kind.rawValue,
+          started: started,
           seed: seedIDs,
           exclude: exclude,
           timeZone: TimeZone.current.identifier
@@ -284,16 +300,23 @@ public final class KeepPlaying {
         if !songs.isEmpty { albums.append((album, songs)) }
       }
       guard !albums.isEmpty else { return nil }
-      let answerText = answer.answer == "more-by"
+      let heading = answer.heading?.answer ?? (answer.answer == "more-by"
         ? "more by \(seed.album?.artist?.name ?? seed.creatorName)"
-        : "a record like it"
-      return Entry(key: key, albums: albums, albumAnswer: answerText, cursor: 0, songs: [], fromCloud: true)
+        : "a record like it")
+      return Entry(key: key, albums: albums, heading: heading, cursor: 0, songs: [], fromCloud: true)
     case "songs":
       let ids = (answer.songs ?? []).compactMap { songIDByLocalID[$0] }
       let byID = library.getSongsByID(for: account, ids: Set(ids))
       let songs = playableFilter(ids.compactMap { byID[$0] })
       guard !songs.isEmpty else { return nil }
-      return Entry(key: key, albums: [], albumAnswer: "", cursor: 0, songs: songs, fromCloud: true)
+      return Entry(
+        key: key,
+        albums: [],
+        heading: answer.heading?.answer ?? "more like this",
+        cursor: 0,
+        songs: songs,
+        fromCloud: true
+      )
     default:
       return nil
     }
@@ -402,7 +425,7 @@ public final class KeepPlaying {
       return songs.isEmpty ? nil : (album, songs)
     }
     guard !playable.isEmpty else { return nil }
-    return Entry(key: key, albums: playable, albumAnswer: answer, cursor: 0, songs: [])
+    return Entry(key: key, albums: playable, heading: answer, cursor: 0, songs: [])
   }
 
   /// Songs on the phone close to the last few songs (Lately's draw: the closest pool, at
@@ -439,6 +462,6 @@ public final class KeepPlaying {
     }
     let songs = playableFilter(ids.compactMap { index.songsByID[$0] })
     guard !songs.isEmpty else { return nil }
-    return Entry(key: key, albums: [], albumAnswer: "", cursor: 0, songs: songs)
+    return Entry(key: key, albums: [], heading: "more like this", cursor: 0, songs: songs)
   }
 }

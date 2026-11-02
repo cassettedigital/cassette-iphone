@@ -701,16 +701,24 @@ public struct CassetteDeviceSummary: Sendable, Decodable {
   }
 }
 
-/// The cloud's keep playing answer (POST /api/sync/keep-playing): records that sound like the one
-/// that ended (`answer` "like") or the same artist's ("more-by"), each as its songs in the
-/// library; or songs; or nothing ("none").
+/// The cloud's keep playing answer (POST /api/sync/keep-playing; the contract is the web's
+/// lib/keep-playing/contract.ts): records that sound like the one that ended or the same
+/// artist's, each as its songs in the library; or songs; or nothing ("none"); with the words
+/// under THEN.
 public struct KeepPlayingAnswer: Decodable, Sendable {
   public struct Record: Decodable, Sendable {
     public let songs: [String]
   }
 
+  /// The words under THEN, as every surface shows them (version 2).
+  public struct Heading: Decodable, Sendable {
+    public let shout: String
+    public let answer: String
+  }
+
   public let kind: String
   public let answer: String?
+  public let heading: Heading?
   public let records: [Record]?
   public let songs: [String]?
 }
@@ -1109,12 +1117,14 @@ public final class CassetteSyncAPI: @unchecked Sendable {
   /// both as cassette_local_ids. Posted to www so the body survives the bare domain's redirect.
   public func postKeepPlaying(
     kind: String,
+    started: [String],
     seed: [String],
     exclude: [String],
     timeZone: String
   ) async throws -> KeepPlayingAnswer {
     let body = try JSONSerialization.data(withJSONObject: [
       "kind": kind,
+      "started": started,
       "seed": seed,
       "exclude": exclude,
       "tz": timeZone,

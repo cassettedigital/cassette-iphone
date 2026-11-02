@@ -167,10 +167,9 @@ public class AudioPlayer: NSObject, BackendAudioPlayerNotifiable {
     // and the resulting shelf updates still happen, just not inline with the
     // skip. Stays on the main context (no cross-context races).
     Task { @MainActor in playable.countPlayed() }
-    // cassette (keep playing): the queue's last song is starting, so the pick is worked out
-    // now rather than in the gap after it.
-    if queueHandler.nextQueueCount == 0, queueHandler.userQueueCount == 0,
-       playerStatus.playerMode == .music, !playable.isRadio,
+    // cassette (keep playing): a song is starting, so the pick is asked for now (once per queue
+    // end) and held well before the queue runs out, rather than in the gap after it.
+    if playerStatus.playerMode == .music, !playable.isRadio,
        KeepPlaying.shared.isActive(repeatMode: playerStatus.repeatMode) {
       KeepPlaying.shared.prepare(queue: keepPlayingQueue)
     }
@@ -340,6 +339,8 @@ public class AudioPlayer: NSObject, BackendAudioPlayerNotifiable {
           let pick = KeepPlaying.shared.take(queue: keepPlayingQueue)
     else { return false }
     queueHandler.appendActiveQueue(playables: pick.songs)
+    // the pick is what started the queue now: the next answer follows it
+    KeepPlaying.shared.noteStarted(playables: pick.songs)
     // An album names the queue after itself; songs from all over have no one name, so the
     // head reads just UP NEXT rather than the playlist they came after.
     queueHandler.setContextName(pick.album?.name ?? "")
