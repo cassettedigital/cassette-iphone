@@ -701,6 +701,20 @@ public struct CassetteDeviceSummary: Sendable, Decodable {
   }
 }
 
+/// The cloud's keep playing answer (POST /api/sync/keep-playing): records that sound like the one
+/// that ended (`answer` "like") or the same artist's ("more-by"), each as its songs in the
+/// library; or songs; or nothing ("none").
+public struct KeepPlayingAnswer: Decodable, Sendable {
+  public struct Record: Decodable, Sendable {
+    public let songs: [String]
+  }
+
+  public let kind: String
+  public let answer: String?
+  public let records: [Record]?
+  public let songs: [String]?
+}
+
 // MARK: - CassetteSyncAPI
 
 public final class CassetteSyncAPI: @unchecked Sendable {
@@ -1088,6 +1102,25 @@ public final class CassetteSyncAPI: @unchecked Sendable {
     let tz = timeZone.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "UTC"
     let data = try await get(path: "/api/sync/made-for-you?tz=\(tz)")
     return try JSONDecoder().decode(MadeForYouFeed.self, from: data)
+  }
+
+  /// What plays when the queue runs out (POST /api/sync/keep-playing, the made-for-you recipe
+  /// seeded from the queue): `seed` is what just played, oldest first, `exclude` the whole queue,
+  /// both as cassette_local_ids. Posted to www so the body survives the bare domain's redirect.
+  public func postKeepPlaying(
+    kind: String,
+    seed: [String],
+    exclude: [String],
+    timeZone: String
+  ) async throws -> KeepPlayingAnswer {
+    let body = try JSONSerialization.data(withJSONObject: [
+      "kind": kind,
+      "seed": seed,
+      "exclude": exclude,
+      "tz": timeZone,
+    ])
+    let data = try await send(method: "POST", path: "/api/sync/keep-playing", body: body, base: Self.wwwBase)
+    return try JSONDecoder().decode(KeepPlayingAnswer.self, from: data)
   }
 
   /// Home, made once in the cloud for every device (GET /api/sync/home, One Home): every row

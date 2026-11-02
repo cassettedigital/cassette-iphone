@@ -5,9 +5,11 @@
 //  cassette (founder, 2026-11-02): when the queue runs out, the music keeps going. What
 //  started it decides how: an album carries on with another whole album, anything else
 //  (a mix, a playlist, one song from search, an artist on shuffle) carries on with songs.
-//  Everything is picked on the phone, from the phone's own music, with the maths the album
-//  page's MORE LIKE and Lately already use, so it works offline and in the car. Repeat
-//  wins: with repeat on, keep playing steps aside until repeat is off again.
+//  The pick is the cloud's (POST /api/sync/keep-playing: the made-for-you recipe seeded from
+//  the queue, founder 2026-11-02), asked for as soon as the queue sheet or the last song needs
+//  it. Until it comes, and whenever it cannot (offline, an error), the phone picks from its own
+//  music with the maths the album page's MORE LIKE and the old Lately draw use, so it still
+//  works in the car. Repeat wins: with repeat on, keep playing steps aside until repeat is off.
 //
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -119,9 +121,15 @@ public final class KeepPlaying {
     var albumAnswer: String
     var cursor: Int
     var songs: [AbstractPlayable]
+    /// The cloud's answer, not the phone's stand-in.
+    var fromCloud = false
   }
 
   private var entry: Entry?
+  /// The cloud's answer for the last seed asked about, kept apart so Swap can come back to it.
+  private var cloudEntry: Entry?
+  /// Seeds already asked about: one ask per seed, answered or not.
+  private var askedCloud = Set<String>()
   /// Whether the last answer came back empty only because the mood index was still building.
   private var waitingForIndex = false
 
@@ -146,6 +154,8 @@ public final class KeepPlaying {
     let albums = Set(songs.compactMap { $0.album?.id })
     kind = songs.count >= 2 && albums.count == 1 ? .album : .songs
     entry = nil
+    cloudEntry = nil
+    askedCloud.removeAll()
   }
 
   /// What plays when `queue` runs out, or nil when there is nothing that fits (or the
@@ -198,10 +208,15 @@ public final class KeepPlaying {
   private func pick(for queue: Queue, waitForIndex: Bool) -> Pick? {
     guard let seed = queue.lastSong else { return nil }
     let key = seedKey(queue: queue, seed: seed)
+    askCloud(key: key, queue: queue, seed: seed)
     if entry?.key != key {
-      guard let built = build(key: key, queue: queue, seed: seed, waitForIndex: waitForIndex)
-      else { return nil }
-      entry = built
+      if let cloudEntry, cloudEntry.key == key {
+        entry = cloudEntry
+      } else {
+        guard let built = build(key: key, queue: queue, seed: seed, waitForIndex: waitForIndex)
+        else { return nil }
+        entry = built
+      }
     }
     guard let entry else { return nil }
     if !entry.albums.isEmpty {
@@ -211,6 +226,97 @@ public final class KeepPlaying {
     }
     guard !entry.songs.isEmpty else { return nil }
     return Pick(kind: .songs, album: nil, songs: entry.songs, answer: "more like this")
+  }
+
+  // MARK: - The cloud's pick
+
+  /// Ask the cloud once per seed. Its answer replaces the phone's stand-in when it lands (if
+  /// the queue still ends the same way), and THEN redraws.
+  private func askCloud(key: String, queue: Queue, seed: Song) {
+    guard !askedCloud.contains(key), let account = seed.account else { return }
+    askedCloud.insert(key)
+    let localIDBySongID = Self.localIDsBySongID()
+    let songs = queue.songs
+    let seedIDs = songs.suffix(10).compactMap { localIDBySongID[$0.id] }
+    guard !seedIDs.isEmpty else { return }
+    let exclude = songs.compactMap { localIDBySongID[$0.id] }
+    let kind = kind
+    Task { @MainActor in
+      let answer: KeepPlayingAnswer
+      do {
+        answer = try await CassetteSyncAPI.shared.postKeepPlaying(
+          kind: kind.rawValue,
+          seed: seedIDs,
+          exclude: exclude,
+          timeZone: TimeZone.current.identifier
+        )
+      } catch {
+        // the phone's own pick stands; a later seed asks again
+        print("Cassette keep playing: cloud ask failed - \(error.localizedDescription)")
+        return
+      }
+      guard let built = self.entry(from: answer, key: key, account: account, seed: seed) else { return }
+      self.cloudEntry = built
+      guard self.entry == nil || self.entry?.key == key else { return }
+      self.entry = built
+      self.changed()
+    }
+  }
+
+  /// The cloud's answer as songs on this phone: each record by any of its songs the phone
+  /// holds (played as the phone holds the record), songs in the cloud's order. Nil when the
+  /// phone holds none of it.
+  private func entry(from answer: KeepPlayingAnswer, key: String, account: Account, seed: Song) -> Entry? {
+    let songIDByLocalID = Self.songIDsByLocalID()
+    let library = AmperKit.shared.storage.main.library
+    switch answer.kind {
+    case "album":
+      var seen: Set<String> = [seed.album?.id ?? ""]
+      var albums = [(album: Album, songs: [AbstractPlayable])]()
+      for record in answer.records ?? [] {
+        let ids = Set(record.songs.compactMap { songIDByLocalID[$0] })
+        guard let album = library.getSongsByID(for: account, ids: ids).values
+          .sorted(by: { $0.id < $1.id })
+          .lazy.compactMap(\.album).first,
+          seen.insert(album.id).inserted
+        else { continue }
+        let songs = playableFilter(album.playables)
+        if !songs.isEmpty { albums.append((album, songs)) }
+      }
+      guard !albums.isEmpty else { return nil }
+      let answerText = answer.answer == "more-by"
+        ? "more by \(seed.album?.artist?.name ?? seed.creatorName)"
+        : "a record like it"
+      return Entry(key: key, albums: albums, albumAnswer: answerText, cursor: 0, songs: [], fromCloud: true)
+    case "songs":
+      let ids = (answer.songs ?? []).compactMap { songIDByLocalID[$0] }
+      let byID = library.getSongsByID(for: account, ids: Set(ids))
+      let songs = playableFilter(ids.compactMap { byID[$0] })
+      guard !songs.isEmpty else { return nil }
+      return Entry(key: key, albums: [], albumAnswer: "", cursor: 0, songs: songs, fromCloud: true)
+    default:
+      return nil
+    }
+  }
+
+  /// The phone's song id for each cassette_local_id it holds (newest download first, the rule
+  /// every cloud answer is matched by).
+  private static func songIDsByLocalID() -> [String: String] {
+    var out = [String: String]()
+    for row in (try? DeviceOwnershipManager(context: AmperKit.shared.storage.main.context).fetchAll()) ?? [] {
+      let localID = row.cassetteLocalId
+      guard !localID.isEmpty, let songID = row.subsonicTrackId, out[localID] == nil else { continue }
+      out[localID] = songID
+    }
+    return out
+  }
+
+  private static func localIDsBySongID() -> [String: String] {
+    var out = [String: String]()
+    for (localID, songID) in songIDsByLocalID() where out[songID] == nil {
+      out[songID] = localID
+    }
+    return out
   }
 
   /// Albums follow the record the queue ends on; songs follow the last few songs.
