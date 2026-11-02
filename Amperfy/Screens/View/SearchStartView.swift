@@ -8,8 +8,13 @@
 //
 //  phone-taste (2026-10-21): below the chips, the GENRES grid from the approved mock
 //  (proto/phone-taste Screens.tsx SearchStartScreen; phone.module.css .chips,
-//  .genreGrid, .genreTile, .genreGlow, .genreCover): the genres of the music on this
-//  phone, biggest first, each tile lit by one of its records.
+//  .genreGrid, .genreTile, .genreCover): the genres of the music on this phone, biggest
+//  first, each tile in the colour of one of its records.
+//
+//  Soft tiles (founder, 2026-11-02): the tile was its cover blurred into a glow, which
+//  averaged most records to brown and made the grid three browns and three pastels. Each
+//  tile now takes only the cover's hue, at one pale tone shared by every tile
+//  (`CoverTint.tileFill`), with its words in the deep shade of that hue and no text shadow.
 //
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -39,7 +44,7 @@ final class SearchStartView: UIView {
   }
 
   /// One genre tile: the genre's name, how many of its albums are on the phone, and one of
-  /// its records (cover image plus the cover's path, which keys the glow).
+  /// its records (cover image plus the cover's path, which keys the tile's colour).
   struct GenreTile {
     let name: String
     let albumCount: Int
@@ -195,37 +200,34 @@ final class SearchStartView: UIView {
 
 // MARK: - GenreTileView
 
-/// One genre tile (`.genreTile`): bg3, 104pt tall, the record's glow behind, the record
-/// itself tipped into the top-right corner, the name and the album count at the bottom.
-/// The whole tile is one button.
+/// One genre tile (`.genreTile`): 104pt tall, in the record's hue at the shared soft tone,
+/// the record itself tipped into the top-right corner, the name and the album count at the
+/// bottom. The whole tile is one button.
 @MainActor
 private final class GenreTileView: UIControl {
   static let height: CGFloat = 104
   private static let padding: CGFloat = 12
   private static let coverSide: CGFloat = 64
 
-  private let glow = CoverGlowView(recipe: .genreTile)
+  private let coverHost = UIView()
+  private let nameLabel = UILabel()
+  private let countLabel = UILabel()
+  private var tint: CoverTint = .neutral
   private let action: () -> ()
 
   init(genre: SearchStartView.GenreTile) {
     action = genre.action
     super.init(frame: .zero)
-    backgroundColor = .cassette(.surfaceElevated)
     layer.cornerRadius = CassetteRadius.genreTile
     layer.cornerCurve = .continuous
     clipsToBounds = true
 
-    glow.translatesAutoresizingMaskIntoConstraints = false
-    addSubview(glow)
-
     // The record (`.genreCover`): 64pt, pinned 8pt past the right edge and 10pt from the
-    // top, turned 14 degrees, with a soft drop shadow. The shadow sits on a host view
-    // because the image clips to its corners.
-    let coverHost = UIView()
+    // top, turned 14 degrees, with a soft drop shadow in the tile's hue. The shadow sits on
+    // a host view because the image clips to its corners.
     coverHost.translatesAutoresizingMaskIntoConstraints = false
     coverHost.isUserInteractionEnabled = false
     coverHost.isHidden = (genre.cover == nil)
-    coverHost.layer.shadowColor = UIColor.black.cgColor
     coverHost.layer.shadowOpacity = 0.45
     coverHost.layer.shadowRadius = 9
     coverHost.layer.shadowOffset = CGSize(width: 0, height: 8)
@@ -242,37 +244,22 @@ private final class GenreTileView: UIControl {
     coverHost.addSubview(coverView)
     addSubview(coverHost)
 
-    // The name: Barlow ExtraBold 20 in capitals, at most 70% of the tile, with a soft
-    // shadow so it reads over the glow.
-    let nameLabel = UILabel()
+    // The name: Barlow ExtraBold 20 in capitals, at most 70% of the tile.
     nameLabel.translatesAutoresizingMaskIntoConstraints = false
     nameLabel.font = UIFont.cassetteDisplay(size: 20, weight: .extraBold)
-    nameLabel.textColor = .cassette(.textPrimary)
     nameLabel.text = genre.name.uppercased()
     nameLabel.numberOfLines = 2
     nameLabel.lineBreakMode = .byTruncatingTail
     nameLabel.adjustsFontForContentSizeCategory = false
-    nameLabel.layer.shadowColor = UIColor.black.cgColor
-    nameLabel.layer.shadowOpacity = 0.5
-    nameLabel.layer.shadowRadius = 4
-    nameLabel.layer.shadowOffset = CGSize(width: 0, height: 1)
-    nameLabel.layer.masksToBounds = false
     addSubview(nameLabel)
 
     // The count: the bare number, mono at the 13pt floor (the mock's 11px is not used).
-    let countLabel = UILabel()
     countLabel.translatesAutoresizingMaskIntoConstraints = false
     countLabel.font = UIFont.cassette(.caption)
-    countLabel.textColor = .cassette(.textSecondary)
     countLabel.text = "\(genre.albumCount)"
     addSubview(countLabel)
 
     NSLayoutConstraint.activate([
-      glow.topAnchor.constraint(equalTo: topAnchor),
-      glow.bottomAnchor.constraint(equalTo: bottomAnchor),
-      glow.leadingAnchor.constraint(equalTo: leadingAnchor),
-      glow.trailingAnchor.constraint(equalTo: trailingAnchor),
-
       coverHost.widthAnchor.constraint(equalToConstant: Self.coverSide),
       coverHost.heightAnchor.constraint(equalToConstant: Self.coverSide),
       coverHost.trailingAnchor.constraint(equalTo: trailingAnchor, constant: 8),
@@ -290,10 +277,24 @@ private final class GenreTileView: UIControl {
       nameLabel.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: Self.padding),
     ])
 
+    // The colour: from the cache when the cover has been read before (so the grid does not
+    // flash neutral), else neutral until the read lands.
     if let coverPath = genre.coverPath, !coverPath.isEmpty {
-      glow.show(coverPath: coverPath)
+      if let hit = CoverTint.cached(coverPath: coverPath) { tint = hit }
+      Task { [weak self] in
+        guard let read = await CoverTint.resolve(coverPath: coverPath) else { return }
+        self?.apply(read)
+      }
     } else if let cover = genre.cover {
-      glow.show(image: cover, key: "genre-tile:\(genre.name)")
+      let key = "genre-tile:\(genre.name)"
+      if let hit = CoverTint.cached(key: key) { tint = hit }
+      Task { [weak self] in
+        self?.apply(await CoverTint.resolve(image: cover, key: key))
+      }
+    }
+    paint()
+    registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _: UITraitCollection) in
+      self.paint()
     }
 
     isAccessibilityElement = true
@@ -305,6 +306,21 @@ private final class GenreTileView: UIControl {
   @available(*, unavailable)
   required init?(coder: NSCoder) {
     fatalError("init(coder:) has not been implemented")
+  }
+
+  private func apply(_ read: CoverTint) {
+    guard read != tint else { return }
+    tint = read
+    paint()
+  }
+
+  /// The tile, its words and the record's shadow in the tint. The shadow is a CGColor, so it
+  /// is resolved against the current appearance here and again when the appearance changes.
+  private func paint() {
+    backgroundColor = tint.tileFill
+    nameLabel.textColor = tint.tileInk
+    countLabel.textColor = tint.tileCount
+    coverHost.layer.shadowColor = tint.tileShadow.resolvedColor(with: traitCollection).cgColor
   }
 
   override var isHighlighted: Bool {

@@ -232,6 +232,30 @@ public struct CoverTint: Sendable, Hashable {
   /// blue room. The sheet sees it through glass of the screen's own paper, light or dark (the
   /// founder, 2026-11-01), so the app's words and buttons keep their colours on top.
   public var room: UIColor { CoverTintMath.color(CoverTintMath.room(baseRGB)) }
+
+  /// A Search genre tile's paper (founder, 2026-11-02, the "Soft" tiles): the cover's hue at
+  /// one shared pale tone, so a grid of tiles reads as a set instead of each cover's own murky
+  /// average. Light and dark follow the screen.
+  public var tileFill: UIColor { tileTone(light: (0.38, 0.85), dark: (0.30, 0.20)) }
+  /// The tile's name, in the deep shade of the same hue.
+  public var tileInk: UIColor { tileTone(light: (0.55, 0.22), dark: (0.55, 0.86)) }
+  /// The tile's album count, a step quieter than the name.
+  public var tileCount: UIColor { tileTone(light: (0.35, 0.38), dark: (0.30, 0.68)) }
+  /// The tipped record's drop shadow: the hue in the dark, plain black on a dark screen.
+  public var tileShadow: UIColor { tileTone(light: (0.40, 0.30), dark: (0, 0)) }
+
+  /// The cover's hue at a fixed saturation and lightness. A grey cover takes the warm
+  /// neutral hue at half the saturation, as `room` does.
+  private func tileTone(light: (s: Double, l: Double), dark: (s: Double, l: Double)) -> UIColor {
+    let (h, s, _) = CoverTintMath.hsl(baseRGB)
+    let grey = s < 0.08
+    let hue = grey ? 0.09 : h
+    let soften = grey ? 0.5 : 1.0
+    return UIColor.cassetteFollowing(
+      dark: CoverTintMath.hslToRGB(hue, dark.s * soften, dark.l),
+      light: CoverTintMath.hslToRGB(hue, light.s * soften, light.l)
+    )
+  }
   public var glow: UIColor { CoverTintMath.color(glowRGB) }
   /// The record's colour as text, following the screen's appearance.
   public var text: UIColor { UIColor.cassetteFollowing(dark: textRGB, light: textLightRGB) }

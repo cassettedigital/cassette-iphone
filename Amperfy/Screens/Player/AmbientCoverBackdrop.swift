@@ -286,15 +286,6 @@ struct CoverGlowRecipe {
     ])
   )
 
-  /// A Search genre tile (`.genreGlow`: inset -40% each side, centred).
-  static let genreTile = CoverGlowRecipe(
-    sizeFactor: 1.8,
-    topFactor: -0.4,
-    topOffset: 0,
-    alpha: 0.55,
-    scrim: .none
-  )
-
   /// The glow square inside a host of `size`.
   func glowFrame(in size: CGSize) -> CGRect {
     let side = size.width * sizeFactor
