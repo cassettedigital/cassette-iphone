@@ -206,18 +206,78 @@ class PlayerUIHandler: NSObject {
       repeatButton.tintColor = isSelected ? UIColor.cassette(.textOnFill) : UIColor.cassette(.textPrimary)
       repeatButton.backgroundColor = isSelected ? UIColor.cassette(.fillSelected) : .clear
     case .popupPlayer:
-      // phone-taste (queue-shuffle-repeat): a quiet glyph, ink2 when off and ink when on
-      // (never orange: orange means live state, and repeat is a setting).
-      var config = UIButton.Configuration.playerQuietToggle(
-        isOn: isSelected,
-        onColor: UIColor.cassette(.textPrimary)
+      // Keep playing (founder, 2026-11-02): shuffle, repeat and keep playing are one row
+      // with one rule, so repeat lights orange when on like the other two.
+      Self.applyQueueToggle(
+        repeatButton,
+        image: player.repeatMode == .single ? .repeatOne : .repeatAll,
+        state: isSelected ? .on : .off
       )
-      config.image = player.repeatMode == .single
-        ? CassetteIcon.repeatOne.symbolImage
-        : CassetteIcon.repeatAll.symbolImage
-      repeatButton.configuration = config
+      return
     }
     repeatButton.isSelected = isSelected
+  }
+
+  /// The queue head's three toggles (shuffle, repeat, keep playing): what each one shows.
+  enum QueueToggleState {
+    case off
+    case on
+    /// Keep playing while repeat is on: switched on, but repeat wins, so it waits.
+    case waiting
+  }
+
+  /// One rule for the queue head's toggles (founder, 2026-11-02): the same bare 20pt
+  /// symbol, quiet when off, orange when on (`.accentProgress`), faint while waiting, and
+  /// never a box. `isSelected` stays false on purpose: a selected system button paints its
+  /// own grey square behind the glyph (the "brutal" box on the founder's phone), so the
+  /// state is told to VoiceOver as a trait instead.
+  static func applyQueueToggle(_ button: UIButton, image: CassetteIcon, state: QueueToggleState) {
+    var config = UIButton.Configuration.playerQuietToggle(
+      isOn: state == .on,
+      onColor: UIColor.cassette(.accentProgress)
+    )
+    if state == .waiting {
+      config.baseForegroundColor = UIColor.cassette(.textTertiary)
+    }
+    // Three in a row beside the heading: a touch under the 20pt quiet toggle, so the
+    // record's name keeps its room.
+    config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 17)
+    config.image = image.symbolImage
+    button.configuration = config
+    button.configurationUpdateHandler = { button in
+      button.configuration?.background = .clear()
+    }
+    button.isSelected = false
+    if state == .on {
+      button.accessibilityTraits.insert(.selected)
+    } else {
+      button.accessibilityTraits.remove(.selected)
+    }
+  }
+
+  /// Keep playing: on, waiting while repeat is on, or off. A tap while it waits turns
+  /// repeat off (keep playing takes over), as Apple Music's Autoplay does.
+  func refreshKeepPlayingButton(keepPlayingButton: UIButton) {
+    let keepPlaying = KeepPlaying.shared
+    let state: QueueToggleState = !keepPlaying.isOn
+      ? .off
+      : (player.repeatMode == .off ? .on : .waiting)
+    keepPlayingButton.accessibilityLabel = "Keep playing"
+    keepPlayingButton.accessibilityValue = switch state {
+    case .off: "Off"
+    case .on: "On"
+    case .waiting: "Waiting while repeat is on"
+    }
+    Self.applyQueueToggle(keepPlayingButton, image: .keepPlaying, state: state)
+  }
+
+  func keepPlayingButtonPushed() {
+    let keepPlaying = KeepPlaying.shared
+    if keepPlaying.isOn, player.repeatMode != .off {
+      player.setRepeatMode(.off)
+    } else {
+      keepPlaying.isOn.toggle()
+    }
   }
 
   func refreshShuffleButton(shuffleButton: UIButton) {
@@ -240,8 +300,9 @@ class PlayerUIHandler: NSObject {
       shuffleButton.configuration = config
       shuffleButton.backgroundColor = .clear
     case .popupPlayer:
-      config.image = .shuffle
-      shuffleButton.configuration = config
+      Self.applyQueueToggle(shuffleButton, image: .shuffle, state: player.isShuffle ? .on : .off)
+      shuffleButton.isEnabled = appDelegate.storage.settings.user.isPlayerShuffleButtonEnabled
+      return
     }
     shuffleButton.isEnabled = appDelegate.storage.settings.user.isPlayerShuffleButtonEnabled
     shuffleButton.isSelected = player.isShuffle

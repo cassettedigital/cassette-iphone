@@ -282,6 +282,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     storage.applyMultiAccountSettingsUpdateIfNeeded()
     libraryUpdater.performAccountCleanUpIfNeccessaryInBackground()
+    // cassette (keep playing): what the queue carries on with obeys the same "on this
+    // phone" rule as every one-tap play.
+    KeepPlaying.shared.playableFilter = { OneTapPlay.playables($0) }
 
     configureDefaultNavigationBarStyle()
     configureBatteryMonitoring()

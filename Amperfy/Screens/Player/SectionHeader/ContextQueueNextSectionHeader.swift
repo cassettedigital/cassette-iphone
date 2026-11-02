@@ -47,6 +47,9 @@ class ContextQueueNextSectionHeader: UIView {
   weak var shuffleButton: UIButton!
   @IBOutlet
   weak var repeatButton: UIButton!
+  /// Keep playing (founder, 2026-11-02): the third toggle, after repeat. Built in code so
+  /// the Mac queue, which shares the nib, gets it too.
+  private let keepPlayingButton = UIButton(type: .system)
 
   required init?(coder aDecoder: NSCoder) {
     super.init(coder: aDecoder)
@@ -76,8 +79,40 @@ class ContextQueueNextSectionHeader: UIView {
       // centres its text in the space.
       queueNameLabel.centerYAnchor.constraint(equalTo: shuffleButton.centerYAnchor)
         .isActive = true
+      addKeepPlayingButton()
       refreshHeading()
     }
+  }
+
+  /// Keep playing goes where repeat was, at the right margin, and repeat moves in beside
+  /// it: the nib's repeat-to-margin pin gives way to keep playing's.
+  private func addKeepPlayingButton() {
+    for constraint in constraints where
+      (constraint.firstItem as? UIButton) == repeatButton && constraint.firstAttribute == .right ||
+      (constraint.secondItem as? UIButton) == repeatButton && constraint.secondAttribute == .right {
+      constraint.isActive = false
+    }
+    keepPlayingButton.translatesAutoresizingMaskIntoConstraints = false
+    keepPlayingButton.addTarget(self, action: #selector(pressedKeepPlaying), for: .touchUpInside)
+    addSubview(keepPlayingButton)
+    NSLayoutConstraint.activate([
+      keepPlayingButton.leadingAnchor.constraint(equalTo: repeatButton.trailingAnchor, constant: 8),
+      keepPlayingButton.rightAnchor.constraint(equalTo: layoutMarginsGuide.rightAnchor),
+      keepPlayingButton.centerYAnchor.constraint(equalTo: repeatButton.centerYAnchor),
+      keepPlayingButton.widthAnchor.constraint(equalTo: repeatButton.widthAnchor),
+      keepPlayingButton.heightAnchor.constraint(equalTo: repeatButton.heightAnchor),
+    ])
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(keepPlayingChanged),
+      name: KeepPlaying.didChange,
+      object: nil
+    )
+  }
+
+  @objc
+  private func keepPlayingChanged() {
+    playerHandler?.refreshKeepPlayingButton(keepPlayingButton: keepPlayingButton)
   }
 
   func prepare(toWorkOnRootView: PopupPlayerVC?) {
@@ -140,6 +175,7 @@ class ContextQueueNextSectionHeader: UIView {
     refreshCurrentlyPlayingInfo()
     playerHandler?.refreshRepeatButton(repeatButton: repeatButton)
     playerHandler?.refreshShuffleButton(shuffleButton: shuffleButton)
+    playerHandler?.refreshKeepPlayingButton(keepPlayingButton: keepPlayingButton)
   }
 
   func refreshCurrentlyPlayingInfo() {
@@ -147,9 +183,11 @@ class ContextQueueNextSectionHeader: UIView {
     case .music:
       repeatButton.isHidden = false
       shuffleButton.isHidden = false
+      keepPlayingButton.isHidden = false
     case .podcast:
       repeatButton.isHidden = true
       shuffleButton.isHidden = true
+      keepPlayingButton.isHidden = true
     }
   }
 
@@ -164,6 +202,14 @@ class ContextQueueNextSectionHeader: UIView {
   func pressedRepeat(_ sender: Any) {
     playerHandler?.repeatButtonPushed()
     playerHandler?.refreshRepeatButton(repeatButton: repeatButton)
+    playerHandler?.refreshKeepPlayingButton(keepPlayingButton: keepPlayingButton)
+  }
+
+  @objc
+  private func pressedKeepPlaying() {
+    playerHandler?.keepPlayingButtonPushed()
+    playerHandler?.refreshRepeatButton(repeatButton: repeatButton)
+    playerHandler?.refreshKeepPlayingButton(keepPlayingButton: keepPlayingButton)
   }
 }
 
@@ -194,6 +240,7 @@ extension ContextQueueNextSectionHeader: MusicPlayable {
 
   func didRepeatChange() {
     playerHandler?.refreshRepeatButton(repeatButton: repeatButton)
+    playerHandler?.refreshKeepPlayingButton(keepPlayingButton: keepPlayingButton)
   }
 
   func didPlaybackRateChange() {}

@@ -34,9 +34,28 @@ enum PlayerSectionCategory: Int, CaseIterable {
 // MARK: - PopupPlayerVC + UITableViewDataSource, UITableViewDelegate
 
 extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
+  /// cassette (keep playing): THEN, the section after UP NEXT, is not a player queue, so it
+  /// sits outside PlayerSectionCategory (which the Mac queue and PlayerIndex share) and
+  /// every method below answers it first.
+  static let keepPlayingSection = PlayerSectionCategory.allCases.count
+  /// THEN shows the first few songs of a songs pick; the rest follow when it starts.
+  static let keepPlayingSongRows = 5
+
+  var keepPlayingRowCount: Int {
+    guard let pick = keepPlayingPick else { return 0 }
+    switch pick.kind {
+    case .album: return 1
+    case .songs: return min(pick.songs.count, Self.keepPlayingSongRows)
+    }
+  }
+
   func setupTableView() {
     tableView.register(nibName: PlayableTableCell.typeName)
     tableView.register(nibName: CurrentlyPlayingTableCell.typeName)
+    tableView.register(
+      KeepPlayingAlbumCell.self,
+      forCellReuseIdentifier: KeepPlayingAlbumCell.reuseIdentifier
+    )
     tableView.rowHeight = PlayableTableCell.rowHeight
     tableView.estimatedRowHeight = PlayableTableCell.rowHeight
     tableView.backgroundColor = UIColor.clear
@@ -68,7 +87,7 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
   }
 
   func numberOfSections(in tableView: UITableView) -> Int {
-    PlayerSectionCategory.allCases.count
+    PlayerSectionCategory.allCases.count + 1
   }
 
   func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
@@ -99,6 +118,15 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
   // every index path; the songs already played stay in the player, so Back still works.
 
   func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+    if section == Self.keepPlayingSection {
+      guard let pick = keepPlayingPick else { return nil }
+      return CassetteHeading.makeTableHeaderView(
+        shout: "Then",
+        answer: pick.answer,
+        answerColor: coverTint.text,
+        sideInset: UIView.defaultMarginX
+      )
+    }
     let sectionCategors = PlayerSectionCategory(rawValue: section)
     switch sectionCategors {
     case .contextPrev:
@@ -116,6 +144,9 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
   }
 
   func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+    if section == Self.keepPlayingSection {
+      return keepPlayingPick == nil ? CGFloat.leastNormalMagnitude : CassetteHeading.tableHeaderHeight
+    }
     switch PlayerSectionCategory(rawValue: section) {
     case .contextPrev:
       return CGFloat.leastNormalMagnitude
@@ -151,6 +182,7 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
   }
 
   func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+    if section == Self.keepPlayingSection { return keepPlayingRowCount }
     switch PlayerSectionCategory(rawValue: section) {
     case .contextPrev: return 0
     case .currentlyPlaying: return 1
@@ -161,6 +193,9 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
   }
 
   func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+    if indexPath.section == Self.keepPlayingSection {
+      return keepPlayingPick?.kind == .album ? KeepPlayingAlbumCell.rowHeight : PlayableTableCell.rowHeight
+    }
     let sectionCategors = PlayerSectionCategory(rawValue: indexPath.section)
     switch sectionCategors {
     case .contextNext:
@@ -199,6 +234,9 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
   private static var oneAlbumMemo: (key: String, value: Bool)?
 
   func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    if indexPath.section == Self.keepPlayingSection {
+      return keepPlayingCell(at: indexPath)
+    }
     switch PlayerSectionCategory(rawValue: indexPath.section) {
     case .contextNext, .contextPrev, .userQueue:
       let cell: PlayableTableCell = self.tableView.dequeueCell(for: tableView, at: indexPath)
@@ -243,8 +281,43 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
     }
   }
 
+  /// THEN: the record as one card (tap plays it now, Swap or a swipe brings the next one),
+  /// or the first songs as queue rows (a tap plays from that song, a swipe skips it).
+  private func keepPlayingCell(at indexPath: IndexPath) -> UITableViewCell {
+    guard let pick = keepPlayingPick else { return UITableViewCell() }
+    let row = indexPath.row
+    if pick.kind == .album, let album = pick.album {
+      let cell = tableView.dequeueReusableCell(
+        withIdentifier: KeepPlayingAlbumCell.reuseIdentifier,
+        for: indexPath
+      ) as! KeepPlayingAlbumCell
+      cell.display(album: album, artistColor: coverTint.text)
+      cell.onSwap = { KeepPlaying.shared.swap() }
+      cell.onPlay = { [weak self] in self?.player.playKeepPlaying(at: 0) }
+      return cell
+    }
+    let cell: PlayableTableCell = tableView.dequeueCell(for: tableView, at: indexPath)
+    guard row < pick.songs.count else { return cell }
+    cell.display(playable: pick.songs[row], playContextCb: nil, rootView: self)
+    cell.cassetteTapAction = { [weak self] in self?.player.playKeepPlaying(at: row) }
+    cell.backgroundColor = UIColor.clear
+    cell.contentView.backgroundColor = UIColor.clear
+    cell.maskCell(fromTop: 0.0)
+    return cell
+  }
+
+  func tableView(
+    _ tableView: UITableView,
+    titleForDeleteConfirmationButtonForRowAt indexPath: IndexPath
+  )
+    -> String? {
+    guard indexPath.section == Self.keepPlayingSection else { return nil }
+    return keepPlayingPick?.kind == .album ? "Swap" : "Skip"
+  }
+
   // Override to allow editing only for certain rows
   func tableView(_ tableView: UITableView, canEditRowAt indexPath: IndexPath) -> Bool {
+    if indexPath.section == Self.keepPlayingSection { return true }
     switch PlayerSectionCategory(rawValue: indexPath.section) {
     case .contextNext, .contextPrev, .userQueue: return true
     case .currentlyPlaying, .none: return false
@@ -257,6 +330,15 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
     commit editingStyle: UITableViewCell.EditingStyle,
     forRowAt indexPath: IndexPath
   ) {
+    if editingStyle == .delete, indexPath.section == Self.keepPlayingSection {
+      guard let pick = keepPlayingPick else { return }
+      if pick.kind == .album {
+        KeepPlaying.shared.swap()
+      } else if indexPath.row < pick.songs.count, let id = pick.songs[indexPath.row].asSong?.id {
+        KeepPlaying.shared.skip(songID: id)
+      }
+      return
+    }
     if editingStyle == .delete {
       guard let playerIndex = PlayerIndex.create(from: indexPath) else { return }
       player.removePlayable(at: playerIndex)
@@ -289,6 +371,11 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
   )
     -> IndexPath {
     refreshCellMasks()
+    // THEN is not the queue yet: nothing moves in or out of it.
+    if sourceIndexPath.section == Self.keepPlayingSection ||
+      targetIndexPath.section == Self.keepPlayingSection {
+      return sourceIndexPath
+    }
     // deny moving rows to currently playing section, and (phone-taste) into the hidden
     // history above it
     switch PlayerSectionCategory(rawValue: targetIndexPath.section) {
@@ -301,6 +388,7 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
 
   // Override to support conditional rearranging of the table view.
   func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
+    if indexPath.section == Self.keepPlayingSection { return false }
     // Return false if you do not want the item to be re-orderable.
     switch PlayerSectionCategory(rawValue: indexPath.section) {
     case .contextNext, .contextPrev, .userQueue: return true

@@ -187,6 +187,10 @@ public protocol PlayerFacade {
   func setPlaybackRate(_: PlaybackRate)
   var repeatMode: RepeatMode { get }
   func setRepeatMode(_: RepeatMode)
+  /// cassette (keep playing): the queue as KeepPlaying reads it, for the THEN rows.
+  var keepPlayingQueue: KeepPlaying.Queue { get }
+  /// cassette (keep playing): append what KeepPlaying picked and play its song at `index`.
+  func playKeepPlaying(at index: Int)
   var isOfflineMode: Bool { get set }
   var isShouldPauseAfterFinishedPlaying: Bool { get set }
   var isAutoCachePlayedItems: Bool { get set }
@@ -484,6 +488,17 @@ class PlayerFacadeImpl: PlayerFacade {
   func setRepeatMode(_ newValue: RepeatMode) {
     playerStatus.setRepeatMode(newValue)
     musicPlayer.notifyRepeatUpdated()
+  }
+
+  var keepPlayingQueue: KeepPlaying.Queue {
+    musicPlayer.keepPlayingQueue
+  }
+
+  func playKeepPlaying(at index: Int) {
+    let start = queueHandler.nextQueueCount
+    guard musicPlayer.appendKeepPlaying() else { return }
+    let target = min(start + index, queueHandler.nextQueueCount - 1)
+    musicPlayer.play(playerIndex: PlayerIndex(queueType: .next, index: target))
   }
 
   var isOfflineMode: Bool {

@@ -84,6 +84,10 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
   var userQueueSectionHeader: UserQueueSectionHeader?
   var contextNextQueueSectionHeader: ContextQueueNextSectionHeader?
   var activeDisplayedSectionHeader = Set<PlayerSectionCategory>()
+  /// cassette (keep playing): what plays when the queue runs out, shown under THEN.
+  /// Worked out on every reload; nil when keep playing is off, waiting on repeat, or has
+  /// nothing that fits.
+  var keepPlayingPick: KeepPlaying.Pick?
   lazy var clearEmptySectionFooter = {
     let view = UIView()
     view.backgroundColor = .clear
@@ -93,6 +97,12 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
 
   override func viewDidLoad() {
     super.viewDidLoad()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(keepPlayingChanged),
+      name: KeepPlaying.didChange,
+      object: nil
+    )
 
     // cassette Patch 015e: warm-deep backing under the now-playing artwork.
     view.backgroundColor = UIColor.cassette(.surfaceSunken)
@@ -265,8 +275,30 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
   }
 
   func reloadData() {
+    refreshKeepPlayingPick()
     tableView.reloadData()
     scrollToCurrentlyPlayingRow()
+  }
+
+  /// cassette (keep playing): music only, never under a station, never with repeat on.
+  func refreshKeepPlayingPick() {
+    guard player.playerMode == .music,
+          KeepPlaying.shared.isActive(repeatMode: player.repeatMode),
+          player.currentlyPlaying?.isRadio != true
+    else {
+      keepPlayingPick = nil
+      return
+    }
+    keepPlayingPick = KeepPlaying.shared.upcoming(queue: player.keepPlayingQueue)
+  }
+
+  /// The pick changed (swapped, trimmed, switched, or the mood index landed): redraw THEN
+  /// only, so the list does not jump back to the song on now.
+  @objc
+  func keepPlayingChanged() {
+    guard isViewLoaded else { return }
+    refreshKeepPlayingPick()
+    tableView.reloadSections(IndexSet(integer: Self.keepPlayingSection), with: .fade)
   }
 
   func scrollToCurrentlyPlayingRow() {
@@ -468,6 +500,9 @@ extension PopupPlayerVC: MusicPlayable {
   }
 
   func didShuffleChange() {}
-  func didRepeatChange() {}
+  func didRepeatChange() {
+    keepPlayingChanged()
+  }
+
   func didPlaybackRateChange() {}
 }

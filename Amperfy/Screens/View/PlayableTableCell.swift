@@ -254,6 +254,9 @@ class PlayableTableCell: BasicTableCell {
   private var style = PlayableTableCellStyle.none
   private var playerIndexCb: GetPlayerIndexFromTableCellCallback?
   private var playContextCb: GetPlayContextFromTableCellCallback?
+  /// cassette (keep playing): what a tap does instead of playing a context or a queue
+  /// index, for rows that are not in the queue yet (the queue's THEN songs).
+  var cassetteTapAction: (() -> ())?
   private var playable: AbstractPlayable?
   private var download: Download?
   private var rootView: UIViewController?
@@ -360,6 +363,7 @@ class PlayableTableCell: BasicTableCell {
 
   override func prepareForReuse() {
     super.prepareForReuse()
+    cassetteTapAction = nil
     playingSymbolView.stopAnimating()
     resetForReuse()
     // Back to today's row: margins, track-number ink and the page background.
@@ -904,7 +908,9 @@ class PlayableTableCell: BasicTableCell {
 
   func playThisSong() {
     guard let playable = playable else { return }
-    if let playerIndex = playerIndexCb?(self) {
+    if let cassetteTapAction {
+      cassetteTapAction()
+    } else if let playerIndex = playerIndexCb?(self) {
       appDelegate.player.play(playerIndex: playerIndex)
     } else if let context = playContextCb?(self),
               playable.isCached || appDelegate.storage.settings.user.isOnlineMode {

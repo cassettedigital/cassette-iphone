@@ -167,6 +167,13 @@ public class AudioPlayer: NSObject, BackendAudioPlayerNotifiable {
     // and the resulting shelf updates still happen, just not inline with the
     // skip. Stays on the main context (no cross-context races).
     Task { @MainActor in playable.countPlayed() }
+    // cassette (keep playing): the queue's last song is starting, so the pick is worked out
+    // now rather than in the gap after it.
+    if queueHandler.nextQueueCount == 0, queueHandler.userQueueCount == 0,
+       playerStatus.playerMode == .music, !playable.isRadio,
+       KeepPlaying.shared.isActive(repeatMode: playerStatus.repeatMode) {
+      KeepPlaying.shared.prepare(queue: keepPlayingQueue)
+    }
     backendAudioPlayer.requestToPlay(
       playable: playable,
       playbackRate: playerStatus.playbackRate,
@@ -219,6 +226,7 @@ public class AudioPlayer: NSObject, BackendAudioPlayerNotifiable {
     queueHandler.appendActiveQueue(playables: context.playables)
     if context.type == .music {
       queueHandler.setContextName(context.name)
+      KeepPlaying.shared.noteStarted(playables: context.playables)
     }
 
     if queueHandler.isUserQueuePlaying {
@@ -303,9 +311,40 @@ public class AudioPlayer: NSObject, BackendAudioPlayerNotifiable {
   func playNext() {
     if let nextPlayerIndex = nextPlayerIndex {
       play(playerIndex: nextPlayerIndex)
+    } else if appendKeepPlaying() {
+      play(playerIndex: PlayerIndex(queueType: .next, index: 0))
     } else {
       stop()
     }
+  }
+
+  /// cassette (keep playing): the queue as KeepPlaying reads it.
+  var keepPlayingQueue: KeepPlaying.Queue {
+    KeepPlaying.Queue(
+      prev: queueHandler.getAllPrevQueueItems(),
+      current: queueHandler.currentlyPlaying,
+      user: queueHandler.getAllUserQueueItems(),
+      next: queueHandler.getAllNextQueueItems()
+    )
+  }
+
+  /// cassette (keep playing): the queue has run out, so append what KeepPlaying picks (an
+  /// album names the queue after itself). Music only, never after a station, never with
+  /// repeat on. Returns whether anything was appended; it then sits at the head of the
+  /// next queue.
+  @discardableResult
+  func appendKeepPlaying() -> Bool {
+    guard playerStatus.playerMode == .music,
+          KeepPlaying.shared.isActive(repeatMode: playerStatus.repeatMode),
+          currentlyPlaying?.isRadio != true,
+          let pick = KeepPlaying.shared.take(queue: keepPlayingQueue)
+    else { return false }
+    queueHandler.appendActiveQueue(playables: pick.songs)
+    // An album names the queue after itself; songs from all over have no one name, so the
+    // head reads just UP NEXT rather than the playlist they came after.
+    queueHandler.setContextName(pick.album?.name ?? "")
+    notifyPlaylistUpdated()
+    return queueHandler.nextQueueCount > 0
   }
 
   private var nextPlayerIndex: PlayerIndex? {
