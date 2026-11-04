@@ -259,4 +259,48 @@ public enum CassetteKitTokens {
       public static let meta = TypeRole(face: "DM Mono", weight: 500, minSize: 11, maxSize: 11, line: 1.3, trackEm: 0.08, upper: false)
     }
   }
+  /// The image ladder (tokens.json `images`): the only sizes Cassette shows a picture at.
+  public enum Images {
+    public static let rungs: [Int] = [120, 240, 480, 800, 1200]
+    public static let host = "https://media.cassette.digital"
+    public static let path = "/i/{rung}/{bucket}/{key}"
+    public static let format = "webp"
+    public static let assumedCoverAspect: Double = 1.0
+    public static let assumedPhotoAspect: Double = 1.5
+    public enum Fit: Sendable { case cover, contain }
+    /// The rung for a frame `w` x `h` points at `scale`, showing a picture of `aspect` (width over height),
+    /// cropped to fill (`cover`) or shown whole (`contain`); never above the rung that holds the picture's
+    /// `natural` longest side when it is known.
+    public static func pickRung(w: Double, h: Double, scale: Double, aspect: Double, fit: Fit = .cover, natural: Int? = nil) -> Int {
+      let a = aspect > 0 ? aspect : 1
+      let s = fit == .cover ? max(w / a, h) : min(w / a, h)
+      let needed = s * max(a, 1) * scale
+      var rung = rungs.first { Double($0) >= needed - 0.000001 } ?? rungs[rungs.count - 1]
+      if let natural, natural > 0 {
+        rung = min(rung, rungs.first { $0 >= natural } ?? rungs[rungs.count - 1])
+      }
+      return rung
+    }
+    public struct PickExample: Sendable { public let w: Double; public let h: Double; public let scale: Double; public let aspect: Double; public let fit: Fit; public let natural: Int?; public let rung: Int }
+    /// Checked by each platform's tests: if one disagrees, the platforms have drifted.
+    public static let pickExamples: [PickExample] = [
+      PickExample(w: 16.0, h: 16.0, scale: 2.0, aspect: 1.0, fit: .cover, natural: nil, rung: 120),
+      PickExample(w: 40.0, h: 40.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 120),
+      PickExample(w: 41.0, h: 41.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 240),
+      PickExample(w: 48.0, h: 48.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 240),
+      PickExample(w: 48.0, h: 40.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 240),
+      PickExample(w: 81.0, h: 81.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 480),
+      PickExample(w: 160.0, h: 160.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 480),
+      PickExample(w: 160.0, h: 160.0, scale: 3.0, aspect: 1.5, fit: .cover, natural: nil, rung: 800),
+      PickExample(w: 160.0, h: 160.0, scale: 3.0, aspect: 1.5, fit: .contain, natural: nil, rung: 480),
+      PickExample(w: 160.0, h: 160.0, scale: 3.0, aspect: 0.75, fit: .cover, natural: nil, rung: 800),
+      PickExample(w: 390.0, h: 196.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 1200),
+      PickExample(w: 240.0, h: 240.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 800),
+      PickExample(w: 360.0, h: 360.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 1200),
+      PickExample(w: 600.0, h: 600.0, scale: 2.0, aspect: 1.0, fit: .cover, natural: nil, rung: 1200),
+      PickExample(w: 1000.0, h: 1000.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: nil, rung: 1200),
+      PickExample(w: 360.0, h: 360.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: 500, rung: 800),
+      PickExample(w: 48.0, h: 48.0, scale: 3.0, aspect: 1.0, fit: .cover, natural: 100, rung: 120),
+    ]
+  }
 }
