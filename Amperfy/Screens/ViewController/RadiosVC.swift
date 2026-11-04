@@ -32,6 +32,7 @@
 
 import AmperfyKit
 import CoreData
+import ImageIO
 import UIKit
 
 // MARK: - RadioCatalogStation
@@ -398,12 +399,28 @@ final class RadioSaved {
 final class RadioArtLoader {
   static let shared = RadioArtLoader()
   private let cache = NSCache<NSString, UIImage>()
-  private init() { cache.countLimit = 200 }
+  private var inFlight = [String: Task<UIImage?, Never>]()
+  private init() {
+    cache.countLimit = 200
+    // cassette (BUG-818): and by bytes. Search's catalog covers came in at full size, up to
+    // 3000px (36 MB each once decoded), and three searches added about 90 MB.
+    cache.totalCostLimit = 24 * 1024 * 1024
+  }
+
+  /// The largest picture kept: the station page's 240pt picture at 3x. Home's 150pt tiles and
+  /// CarPlay draw the same bitmap smaller.
+  static let maxPixel = 720
+  /// Search's 48pt rows, at 3x with room to spare.
+  static let rowPixel = 240
+
+  private static func key(_ urlString: String, _ maxPixel: Int) -> String {
+    maxPixel == Self.maxPixel ? urlString : "\(urlString)|\(maxPixel)"
+  }
 
   /// The logo when it is already in memory, with no fetch: a rebuilt CarPlay row shows it at
   /// once instead of flashing the word picture first.
-  func cachedImage(for urlString: String) -> UIImage? {
-    cache.object(forKey: urlString as NSString)
+  func cachedImage(for urlString: String, maxPixel: Int = RadioArtLoader.maxPixel) -> UIImage? {
+    cache.object(forKey: Self.key(urlString, maxPixel) as NSString)
   }
 
   /// Big enough to stand for the station on a Home tile (150pt) and everywhere smaller: at
@@ -413,16 +430,44 @@ final class RadioArtLoader {
     min(image.size.width, image.size.height) * image.scale >= 150
   }
 
-  func image(for urlString: String) async -> UIImage? {
-    if let hit = cache.object(forKey: urlString as NSString) { return hit }
+  /// The picture at `urlString`, decoded off the main thread no larger than `maxPixel` on its
+  /// longest side; one fetch per picture and size at a time.
+  func image(for urlString: String, maxPixel: Int = RadioArtLoader.maxPixel) async -> UIImage? {
+    let key = Self.key(urlString, maxPixel)
+    if let hit = cache.object(forKey: key as NSString) { return hit }
+    if let running = inFlight[key] { return await running.value }
     guard let url = URL(string: urlString) else { return nil }
-    var request = URLRequest(url: url)
-    request.timeoutInterval = 12
-    guard let (data, response) = try? await URLSession.shared.data(for: request),
-          (response as? HTTPURLResponse)?.statusCode == 200,
-          let image = UIImage(data: data) else { return nil }
-    cache.setObject(image, forKey: urlString as NSString)
+    let task = Task<UIImage?, Never> {
+      var request = URLRequest(url: url)
+      request.timeoutInterval = 12
+      guard let (data, response) = try? await URLSession.shared.data(for: request),
+            (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+      return await Task.detached(priority: .userInitiated) {
+        Self.downsampled(data, maxPixel: maxPixel)
+      }.value
+    }
+    inFlight[key] = task
+    let image = await task.value
+    inFlight[key] = nil
+    if let image {
+      let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+      cache.setObject(image, forKey: key as NSString, cost: cost)
+    }
     return image
+  }
+
+  /// Decoded now, not on the main thread at first draw, and never larger than it shows.
+  nonisolated private static func downsampled(_ data: Data, maxPixel: Int) -> UIImage? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+    let options: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceShouldCacheImmediately: true,
+      kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+    ]
+    guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    else { return nil }
+    return UIImage(cgImage: cgImage)
   }
 }
 

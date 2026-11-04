@@ -189,18 +189,32 @@ public enum CassetteCloudPlaylistBridge {
     "cassette.playlistCoverMaterializedUrl." + playlistId
   }
 
+  /// Decoded picks by playlist, url and size. A row used to read the file and decode the whole
+  /// picture (up to 1400px) on every configure (BUG-819). NSCache is thread-safe.
+  nonisolated(unsafe) private static let decodedCovers: NSCache<NSString, UIImage> = {
+    let cache = NSCache<NSString, UIImage>()
+    cache.totalCostLimit = 24 * 1024 * 1024
+    return cache
+  }()
+
   /// The playlist's picked cover already on disk, IF it was materialized for this
-  /// exact url — so a cold/offline launch renders it with no network.
+  /// exact url — so a cold/offline launch renders it with no network. Decoded no larger
+  /// than `maxPixel` (the surface's size, the 1000px hero by default) and kept in memory.
   nonisolated public static func materializedCoverImage(
     for playlistId: String,
-    url: String
+    url: String,
+    maxPixel: Int = CoverImageStore.heroMaxPixel
   )
     -> UIImage? {
     guard UserDefaults.standard.string(forKey: materializedUrlKey(playlistId)) == url,
-          let file = coverFileURL(playlistId),
-          let data = try? Data(contentsOf: file),
-          let image = UIImage(data: data)
+          let file = coverFileURL(playlistId)
     else { return nil }
+    let key = "\(playlistId)|\(url)|\(maxPixel)" as NSString
+    if let hit = decodedCovers.object(forKey: key) { return hit }
+    guard let image = CoverImageStore.downsampledImage(atPath: file.path, maxPixel: maxPixel)
+    else { return nil }
+    let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+    decodedCovers.setObject(image, forKey: key, cost: cost)
     return image
   }
 

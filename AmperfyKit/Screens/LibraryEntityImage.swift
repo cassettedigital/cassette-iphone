@@ -63,20 +63,146 @@ extension LibraryEntityImage {
     guard let fullPath = libraryEntity.imagePath(setting: artworkDisplayPreference) else {
       return nil
     }
-    let sourcePath = CoverImageStore.preferredSourcePath(
+    let key = CoverImageStore.decodeKey(
       forFullPath: fullPath,
-      smallSurface: true
+      points: CoverImageStore.smallSurfaceMaxPt
     )
-    if useCache, let cachedImg = Self.cache.object(forKey: sourcePath as NSString) {
+    if useCache, let cachedImg = CoverBitmapCache.shared.image(for: key) {
       return cachedImg
     }
-    let maxPixel = CoverImageStore.isThumbPath(sourcePath)
-      ? CoverImageStore.thumbMaxPixel
-      : CoverImageStore.heroMaxPixel
-    guard let img = CoverImageStore.downsampledImage(atPath: sourcePath, maxPixel: maxPixel)
+    guard let img = CoverImageStore.downsampledImage(atPath: key.path, maxPixel: key.maxPixel)
     else { return nil }
-    Self.cache.setObject(img, forKey: sourcePath as NSString)
+    CoverBitmapCache.shared.set(img, for: key)
     return img
+  }
+}
+
+// MARK: - CoverDecodeKey
+
+/// One decoded size of one cover file: the cache key and the unit a decode is shared on.
+public struct CoverDecodeKey: Hashable, Sendable {
+  public let path: String
+  public let maxPixel: Int
+}
+
+// MARK: - CoverBitmapCache
+
+/// cassette (BUG-816): the decoded covers, by file and size. Bounded by bytes (a hero is about
+/// 4 MB, a row about 0.2 MB) and emptied on a memory warning; it had no limit at all, so
+/// scrolling a big library grew it until iOS stepped in.
+@MainActor
+public final class CoverBitmapCache {
+  public static let shared = CoverBitmapCache()
+
+  /// Holds a full screen of hero covers or a few screens of tiles and rows.
+  static let byteLimit = 64 * 1024 * 1024
+
+  private let cache = NSCache<NSString, UIImage>()
+  /// The cached sizes of each file, so a re-downloaded cover drops all of them.
+  private var keysByPath = [String: Set<CoverDecodeKey>]()
+  private var memoryWarning: NSObjectProtocol?
+
+  private init() {
+    cache.totalCostLimit = Self.byteLimit
+    memoryWarning = NotificationCenter.default.addObserver(
+      forName: UIApplication.didReceiveMemoryWarningNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      MainActor.assumeIsolated { CoverBitmapCache.shared.removeAll() }
+    }
+  }
+
+  private static func name(_ key: CoverDecodeKey) -> NSString {
+    "\(key.path)|\(key.maxPixel)" as NSString
+  }
+
+  func image(for key: CoverDecodeKey) -> UIImage? {
+    cache.object(forKey: Self.name(key))
+  }
+
+  func set(_ image: UIImage, for key: CoverDecodeKey) {
+    let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+    cache.setObject(image, forKey: Self.name(key), cost: cost)
+    keysByPath[key.path, default: []].insert(key)
+  }
+
+  /// Drop every size of the file at `path` (its bytes changed at the same path).
+  func evict(path: String) {
+    for key in keysByPath.removeValue(forKey: path) ?? [] {
+      cache.removeObject(forKey: Self.name(key))
+    }
+    CoverDecoder.forget(path: path)
+  }
+
+  func removeAll() {
+    cache.removeAllObjects()
+    keysByPath.removeAll()
+  }
+}
+
+// MARK: - CoverDecoder
+
+/// cassette (BUG-816): one off-main decode per cover and size, shared by every view that asks
+/// for it while it runs. A view that scrolls away leaves its decode; one nobody is waiting for
+/// is cancelled before it starts, so a fast scroll no longer decodes every cover it passes.
+@MainActor
+enum CoverDecoder {
+  @MainActor
+  private final class Job {
+    let task: Task<UIImage?, Never>
+    var waiters = 0
+    init(task: Task<UIImage?, Never>) { self.task = task }
+  }
+
+  private static var jobs = [CoverDecodeKey: Job]()
+
+  /// Join the decode for `key`, starting it if nothing is running. Pair with `leave`.
+  static func enter(_ key: CoverDecodeKey) {
+    if let job = jobs[key], !job.task.isCancelled {
+      job.waiters += 1
+      return
+    }
+    let task = Task.detached(priority: .userInitiated) { () -> UIImage? in
+      guard !Task.isCancelled else { return nil }
+      return CoverImageStore.downsampledImage(atPath: key.path, maxPixel: key.maxPixel)
+    }
+    let job = Job(task: task)
+    job.waiters = 1
+    jobs[key] = job
+    // A decode that had already started when its last view left still lands in the cache, so
+    // scrolling back shows it at once; one cancelled before it started returns nil and is dropped.
+    Task { @MainActor in
+      finish(job, key: key, image: await task.value)
+    }
+  }
+
+  static func leave(_ key: CoverDecodeKey) {
+    guard let job = jobs[key] else { return }
+    job.waiters -= 1
+    if job.waiters <= 0 { job.task.cancel() }
+  }
+
+  /// The decoded cover for `key`: the cache, else the running decode's result.
+  static func image(for key: CoverDecodeKey) async -> UIImage? {
+    if let hit = CoverBitmapCache.shared.image(for: key) { return hit }
+    guard let job = jobs[key] else { return nil }
+    let image = await job.task.value
+    finish(job, key: key, image: image)
+    return image
+  }
+
+  /// A file's bytes changed: a decode already reading the old ones must not cache them.
+  static func forget(path: String) {
+    for key in jobs.keys where key.path == path {
+      jobs[key] = nil
+    }
+  }
+
+  private static func finish(_ job: Job, key: CoverDecodeKey, image: UIImage?) {
+    guard jobs[key] === job else { return }
+    jobs[key] = nil
+    if let image { CoverBitmapCache.shared.set(image, for: key) }
   }
 }
 
@@ -84,17 +210,15 @@ extension LibraryEntityImage {
 
 @MainActor
 public class LibraryEntityImage: RoundedImage {
-  static private let cache: NSCache<NSString, UIImage> = NSCache()
-
-  /// Drop the cached bitmap(s) for a cover whose bytes changed on disk (both the full
-  /// and thumb tiers). The cache is keyed by tier source PATH, and a re-download
-  /// overwrites at the SAME path — so without this the stale image survives until the
-  /// app restarts. Also called directly by the Cassette folder-cover refresh, where
-  /// every other invalidation hook keys on path or entity identity and so sees nothing
-  /// change.
+  /// Drop the cached bitmap(s) for a cover whose bytes changed on disk (every size of
+  /// both the full and thumb tiers). The cache is keyed by tier source PATH, and a
+  /// re-download overwrites at the SAME path — so without this the stale image survives
+  /// until the app restarts. Also called directly by the Cassette folder-cover refresh,
+  /// where every other invalidation hook keys on path or entity identity and so sees
+  /// nothing change.
   static func evictCache(forFullPath fullPath: String) {
-    cache.removeObject(forKey: fullPath as NSString)
-    cache.removeObject(forKey: CoverImageStore.thumbPath(forFullPath: fullPath) as NSString)
+    CoverBitmapCache.shared.evict(path: fullPath)
+    CoverBitmapCache.shared.evict(path: CoverImageStore.thumbPath(forFullPath: fullPath))
   }
 
   private let appDelegate: AmperKit
@@ -102,9 +226,20 @@ public class LibraryEntityImage: RoundedImage {
   private var entity: AbstractLibraryEntity?
   private var backupArtworkType: ArtworkType?
   private var accountNotificationHandler: AccountNotificationHandler?
-  // The tier source path (thumb vs full) currently loaded into `image`, so a
-  // layout pass that doesn't change the tier doesn't trigger a redundant decode.
-  private var loadedSourcePath: String?
+  // The decode (file and size) currently in `image`, so a layout pass that doesn't
+  // change the size doesn't trigger a redundant decode.
+  private var shownKey: CoverDecodeKey?
+  // The decode this view is waiting for, its request and the task awaiting it.
+  private var pendingKey: CoverDecodeKey?
+  private var pendingToken: UUID?
+  private var loadTask: Task<(), Never>?
+  // A decode that found nothing (a missing or broken file), not retried on every layout pass.
+  private var failedKey: CoverDecodeKey?
+  // cassette (BUG-816): set by display(entity:) until the next layout pass. Until then
+  // the bounds are the nib's design size (291pt in EntityImageView.xib) or zero, both of
+  // which read as a hero, so a fresh cell decoded the full cover before its real size
+  // was known and then the thumb again. The cache can still answer before layout.
+  private var awaitingLayout = false
 
   required public init?(coder: NSCoder) {
     self.appDelegate = AmperKit.shared
@@ -161,9 +296,14 @@ public class LibraryEntityImage: RoundedImage {
   }
 
   public func display(entity: AbstractLibraryEntity) {
+    // A reused cell stops waiting for the cover it showed last.
+    cancelLoad()
     self.entity = entity
     backupArtworkType = entity.getDefaultArtworkType()
-    loadedSourcePath = nil
+    shownKey = nil
+    failedKey = nil
+    awaitingLayout = true
+    setNeedsLayout()
     refresh()
   }
 
@@ -177,15 +317,19 @@ public class LibraryEntityImage: RoundedImage {
   }
 
   public func display(image: UIImage) {
+    cancelLoad()
     self.image = image
     entity = nil
-    loadedSourcePath = nil
+    shownKey = nil
+    awaitingLayout = false
   }
 
   public func display(artworkType: ArtworkType) {
+    cancelLoad()
     backupArtworkType = artworkType
     entity = nil
-    loadedSourcePath = nil
+    shownKey = nil
+    awaitingLayout = false
     refresh()
   }
 
@@ -194,10 +338,15 @@ public class LibraryEntityImage: RoundedImage {
     if let accountInfo = entity?.account?.info {
       theme = appDelegate.storage.settings.accounts.getSetting(accountInfo).read.themePreference
     }
+    // cassette (BUG-817): drawn at the size it shows, not 300pt (900px, about 3.2 MB) in
+    // every row. Before layout the size is unknown, so the smallest stands in.
+    let points = awaitingLayout ? 0 : max(bounds.width, bounds.height)
+    let side = CoverImageStore.placeholderSide(forPoints: points)
     return UIImage.getGeneratedArtwork(
       theme: theme,
       artworkType: backupArtworkType ?? .song,
-      name: (entity as? PlayableContainable)?.name
+      name: (entity as? PlayableContainable)?.name,
+      size: CGSize(width: side, height: side)
     )
   }
 
@@ -208,74 +357,82 @@ public class LibraryEntityImage: RoundedImage {
     return entity?.imagePath(setting: setting)
   }
 
-  /// The tier source to decode: the ~480px thumb for small surfaces (carousel,
-  /// queue, mini, resume) when it exists, the capped full for heroes. Driven by
-  /// the view's bounds, so it settles correctly after layout.
-  private func tierSourcePath(fullPath: String) -> String {
-    let maxSide = max(bounds.width, bounds.height)
-    let smallSurface = maxSide > 1 && maxSide <= CoverImageStore.smallSurfaceMaxPt
-    return CoverImageStore.preferredSourcePath(forFullPath: fullPath, smallSurface: smallSurface)
-  }
-
   /// `keepCurrentImageWhileLoading` suppresses the placeholder swap while we
   /// re-decode NEW bytes for the SAME entity that already has a valid image on
   /// screen — a cover re-check or pick overwrite. Without it every cover the sync
   /// pass re-checks briefly flashes the gray placeholder before the (usually
   /// identical) new bytes land, which is the "covers flash while it checks them"
   /// blink. A fresh entity or a reused cell still shows the placeholder, because
-  /// there `loadedSourcePath` is nil AND this stays false (see the call sites).
+  /// there `shownKey` is nil AND this stays false (see the call sites).
   private func refresh(keepCurrentImageWhileLoading: Bool = false) {
     guard let fullPath = entityImagePathToDisplay else {
+      cancelLoad()
       image = placeholderImage
-      loadedSourcePath = nil
+      shownKey = nil
       return
     }
-    let sourcePath = tierSourcePath(fullPath: fullPath)
+    // The decode this view's size calls for: rows the thumb at 240px, tiles the thumb at
+    // 480px, heroes the full cover at 1000px. Driven by the bounds, so it settles after layout.
+    let points = max(bounds.width, bounds.height)
+    let key = CoverImageStore.decodeKey(forFullPath: fullPath, points: points)
 
-    // Already showing the right tier — nothing to do (avoids redundant decodes
-    // on every layout pass).
-    if sourcePath == loadedSourcePath, image != nil {
+    // Already showing that size — nothing to do (avoids redundant decodes on every
+    // layout pass).
+    if key == shownKey, image != nil {
       return
     }
 
-    if let cachedImg = Self.cache.object(forKey: sourcePath as NSString) {
+    if let cachedImg = CoverBitmapCache.shared.image(for: key) {
+      cancelLoad()
       image = cachedImg
-      loadedSourcePath = sourcePath
+      shownKey = key
       return
     }
 
-    if loadedSourcePath == nil, !keepCurrentImageWhileLoading {
+    if shownKey == nil, !keepCurrentImageWhileLoading {
       image = placeholderImage
     }
-    Task.detached(priority: .high) { [weak self] in
-      await self?.loadImageAndCacheIt(sourcePath: sourcePath)
+    // No decode until the real size is known (layoutSubviews clears this), and none twice.
+    guard !awaitingLayout, points > 1, key != pendingKey, key != failedKey else { return }
+    load(key)
+  }
+
+  /// Off-main, size-bounded ImageIO decode, shared with any other view showing the same
+  /// cover at the same size — a 48pt row never holds a 480px bitmap, and there is no
+  /// synchronous main-thread decode.
+  private func load(_ key: CoverDecodeKey) {
+    cancelLoad()
+    let token = UUID()
+    pendingKey = key
+    pendingToken = token
+    CoverDecoder.enter(key)
+    loadTask = Task { [weak self] in
+      let decoded = await CoverDecoder.image(for: key)
+      guard let self, pendingToken == token else { return }
+      CoverDecoder.leave(key)
+      pendingKey = nil
+      pendingToken = nil
+      loadTask = nil
+      // Re-evaluate against the current size (bounds may have changed) and show.
+      if decoded != nil { refresh() } else { failedKey = key }
     }
   }
 
-  @concurrent
-  private func loadImageAndCacheIt(sourcePath: String) async {
-    guard !Task.isCancelled else { return }
-    let maxPixel = CoverImageStore.isThumbPath(sourcePath)
-      ? CoverImageStore.thumbMaxPixel
-      : CoverImageStore.heroMaxPixel
-    // Off-main, size-bounded ImageIO decode — a 160pt cell never holds a
-    // full-resolution bitmap, and there is no synchronous main-thread decode.
-    guard let readyImage = CoverImageStore.downsampledImage(atPath: sourcePath, maxPixel: maxPixel)
-    else { return }
-    guard !Task.isCancelled else { return }
-    Task { @MainActor [weak self] in
-      guard let self else { return }
-      Self.cache.setObject(readyImage, forKey: sourcePath as NSString)
-      // Re-evaluate against the current tier (bounds may have changed) and show.
-      refresh()
-    }
+  /// Leave the decode this view was waiting for (a reused cell, a new entity).
+  private func cancelLoad() {
+    if let pendingKey { CoverDecoder.leave(pendingKey) }
+    pendingKey = nil
+    pendingToken = nil
+    loadTask?.cancel()
+    loadTask = nil
   }
 
   override public func layoutSubviews() {
     super.layoutSubviews()
-    // Bounds are valid here — re-pick the tier (e.g. a hero upgrading from a
-    // cached thumb to the full cover). refresh() no-ops when the tier is stable.
+    // Bounds are valid here — pick the size (e.g. a hero upgrading from a cached
+    // thumb to the full cover). refresh() no-ops when the size is stable.
     if entity != nil {
+      awaitingLayout = false
       refresh()
     }
   }
@@ -307,7 +464,9 @@ public class LibraryEntityImage: RoundedImage {
       if let fullPath = self.entityImagePathToDisplay {
         Self.evictCache(forFullPath: fullPath)
       }
-      self.loadedSourcePath = nil
+      self.cancelLoad()
+      self.shownKey = nil
+      self.failedKey = nil
       self.refresh(keepCurrentImageWhileLoading: true)
     }
   }
@@ -328,6 +487,40 @@ public enum CoverImageStore {
   public static let heroMaxPixel = 1000
   /// Surfaces at or below this point size use the thumb tier.
   public static let smallSurfaceMaxPt: CGFloat = 200
+  /// cassette (BUG-816): rows (songs, playlists, queue, mini player: 40-80pt) decode the
+  /// thumb at this size, 80pt at 3x. They held the 480px thumb, about 11 times the pixels
+  /// a 48pt row shows.
+  public static let rowMaxPixel = 240
+  public static let rowSurfaceMaxPt: CGFloat = 80
+
+  /// What a surface whose longest side is `points` decodes: the thumb (when one exists) at
+  /// 240px for rows or 480px for tiles, else the full cover capped to the same size; heroes
+  /// the full cover at 1000px. An unknown size (0) counts as a hero, so callers wait for
+  /// layout rather than decode it.
+  public static func decodeKey(forFullPath full: String, points: CGFloat) -> CoverDecodeKey {
+    let maxPixel = decodePixels(forPoints: points)
+    guard maxPixel < heroMaxPixel else { return CoverDecodeKey(path: full, maxPixel: maxPixel) }
+    return CoverDecodeKey(
+      path: preferredSourcePath(forFullPath: full, smallSurface: true),
+      maxPixel: maxPixel
+    )
+  }
+
+  /// The decode size for a surface whose longest side is `points`: 240px for rows, 480px
+  /// for tiles, 1000px for heroes and for an unknown size (0).
+  public static func decodePixels(forPoints points: CGFloat) -> Int {
+    if points > 1, points <= rowSurfaceMaxPt { return rowMaxPixel }
+    if points > 1, points <= smallSurfaceMaxPt { return thumbMaxPixel }
+    return heroMaxPixel
+  }
+
+  /// cassette (BUG-817): the side, in points, to draw a "no cover" placeholder for a surface
+  /// whose longest side is `points` (0 when not laid out yet): row, tile or hero.
+  public static func placeholderSide(forPoints points: CGFloat) -> CGFloat {
+    if points <= rowSurfaceMaxPt { return rowSurfaceMaxPt }
+    if points <= smallSurfaceMaxPt { return 160 }
+    return 300
+  }
 
   /// Thumb path for a full cover path: `…/al-x.png` → `…/al-x_thumb.png`.
   public static func thumbPath(forFullPath full: String) -> String {
@@ -370,8 +563,15 @@ public enum CoverImageStore {
     // wrapped in a UIImage and drawn through an opaque context. Redrawing into an
     // sRGB bitmap forces the conversion, so every cover decodes to true colour on
     // every surface. (UIImage(contentsOfFile:) used to hide this; the tiered
-    // ImageIO path does not.)
+    // ImageIO path does not.) An 8-bit RGB decode, nearly every cover, draws right as
+    // it is, so it skips the second bitmap and the redraw (BUG-816).
+    if isPlainRGB(cg) { return UIImage(cgImage: cg) }
     return normalizedSRGBImage(cg) ?? UIImage(cgImage: cg)
+  }
+
+  /// 8 bits per channel, 32 bits per pixel, in an RGB colour space: what UIKit draws as is.
+  private static func isPlainRGB(_ cg: CGImage) -> Bool {
+    cg.colorSpace?.model == .rgb && cg.bitsPerComponent == 8 && cg.bitsPerPixel == 32
   }
 
   /// Redraw a CGImage into an 8-bit sRGB bitmap so non-RGB sources (CMYK,

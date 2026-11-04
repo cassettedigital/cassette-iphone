@@ -472,6 +472,9 @@ extension UIImage {
   private static let ghostArtworkCache: NSCache<NSString, UIImage> = {
     let cache = NSCache<NSString, UIImage>()
     cache.countLimit = 64
+    // cassette (BUG-817): and by bytes. Callers size the placeholder to the surface now, but a
+    // default-size one is still 900px at 3x, about 3.2 MB.
+    cache.totalCostLimit = 16 * 1024 * 1024
     return cache
   }()
 
@@ -548,7 +551,8 @@ extension UIImage {
       }
     }
 
-    ghostArtworkCache.setObject(image, forKey: cacheKey)
+    let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+    ghostArtworkCache.setObject(image, forKey: cacheKey, cost: cost)
     return image
   }
 

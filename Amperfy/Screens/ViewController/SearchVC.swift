@@ -970,7 +970,9 @@ class SearchVC: BasicTableViewController {
       RecordOpener.open(
         albumSlug: slug,
         title: hit.kind == .album ? hit.title : hit.albumTitle,
-        placeholder: hit.imageUrl.flatMap { RadioArtLoader.shared.cachedImage(for: $0) },
+        placeholder: hit.imageUrl.flatMap {
+          RadioArtLoader.shared.cachedImage(for: $0, maxPixel: RadioArtLoader.rowPixel)
+        },
         account: account,
         show: push
       )
@@ -2409,12 +2411,13 @@ final class CatalogHitCell: UITableViewCell {
     accessibilityLabel = "\(hit.title), \(hit.subtitle), not in your library"
     represented = hit.imageUrl
     guard let src = hit.imageUrl, !src.isEmpty else { return }
-    if let cached = RadioArtLoader.shared.cachedImage(for: src) {
+    // A 48pt square: decoded at the row's size, not the cover's (BUG-818).
+    if let cached = RadioArtLoader.shared.cachedImage(for: src, maxPixel: RadioArtLoader.rowPixel) {
       art.image = cached
       return
     }
     Task { @MainActor [weak self] in
-      let loaded = await RadioArtLoader.shared.image(for: src)
+      let loaded = await RadioArtLoader.shared.image(for: src, maxPixel: RadioArtLoader.rowPixel)
       guard let self, represented == src else { return }
       art.image = loaded
     }

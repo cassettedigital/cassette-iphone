@@ -202,7 +202,13 @@ open class EntityImageView: UIView {
       return
     }
     // A picked cover already materialized on disk for THIS url — local, offline, no flash.
-    if let local = CassetteCloudPlaylistBridge.materializedCoverImage(for: playlistId, url: urlKey) {
+    // Decoded at this view's size (a 70pt row, not the 1400px upload), once (BUG-819).
+    let maxPixel = CoverImageStore.decodePixels(forPoints: max(bounds.width, bounds.height))
+    if let local = CassetteCloudPlaylistBridge.materializedCoverImage(
+      for: playlistId,
+      url: urlKey,
+      maxPixel: maxPixel
+    ) {
       applyRemoteCover(local, loadID: loadID)
       return
     }
@@ -213,12 +219,18 @@ open class EntityImageView: UIView {
           await self?.fallBackToPreset(theme: theme, container: container, loadID: loadID)
           return
         }
-        guard let image = UIImage(data: data) else {
+        // Persist so the next cold/offline launch reads local (best-effort), then read it
+        // back at this view's size.
+        CassetteCloudPlaylistBridge.storeMaterializedCover(data, for: playlistId, url: urlKey)
+        // (A failed write, rare, still shows the download as it came.)
+        guard let image = CassetteCloudPlaylistBridge.materializedCoverImage(
+          for: playlistId,
+          url: urlKey,
+          maxPixel: maxPixel
+        ) ?? UIImage(data: data) else {
           await self?.fallBackToPreset(theme: theme, container: container, loadID: loadID)
           return
         }
-        // Persist so the next cold/offline launch reads local (best-effort, off-main).
-        CassetteCloudPlaylistBridge.storeMaterializedCover(data, for: playlistId, url: urlKey)
         await MainActor.run {
           self?.applyRemoteCover(image, loadID: loadID)
         }
@@ -324,10 +336,13 @@ open class EntityImageView: UIView {
             // cassette Patch 017: transient placeholder while each tile waits
             // to be assigned its real entity below. `name: nil` falls through
             // to the SF Symbol ghost rather than rendering a blank initial.
+            // A mosaic tile is half the view's side: a row's size, not the 300pt default (BUG-817).
+            let side = CoverImageStore.rowSurfaceMaxPt
             $0.display(image: UIImage.getGeneratedArtwork(
               theme: theme,
               artworkType: .song,
-              name: nil
+              name: nil,
+              size: CGSize(width: side, height: side)
             ))
             $0.isHidden = false
           }
