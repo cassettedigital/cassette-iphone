@@ -785,6 +785,8 @@ public final class IntentExecutor {
       let artist: String
       let albumKey: String
       let artistImageUrl: String?
+      /// The same photo's top ladder rung, tried first (artistImageUrl stays its identity).
+      let artistImageLadderUrl: String?
       let coverUrl: String?
       let coverIsOverride: Bool
       /// Folder-cover byte fingerprint from the Mac; nil when the album has a user pick.
@@ -814,11 +816,13 @@ public final class IntentExecutor {
       let albumNorm = Self.normalizeForVersionKey(album.albumName)
       let artistNorm = Self.normalizeForVersionKey(album.artistName)
       let imageUrl = (album.artistImageUrl?.isEmpty == false) ? album.artistImageUrl : nil
+      let ladderUrl = imageUrl == nil ? nil : album.artistImage?.url(rung: CoverImageStore.topRung)
       let coverUrl = (album.coverUrl?.isEmpty == false) ? album.coverUrl : nil
       manifestByAlbum[albumNorm, default: []].append(ManifestCandidate(
         artist: artistNorm,
         albumKey: Self.albumVersionKey(artist: album.artistName, album: album.albumName),
         artistImageUrl: imageUrl,
+        artistImageLadderUrl: ladderUrl,
         coverUrl: coverUrl,
         coverIsOverride: album.coverIsOverride ?? false,
         localCoverVersion: (album.localCoverVersion?.isEmpty == false)
@@ -840,6 +844,7 @@ public final class IntentExecutor {
       let albumKey: String
       let contentVersion: String
       let artistImageUrl: String?
+      let artistImageLadderUrl: String?
       let coverUrl: String?
       let coverIsOverride: Bool
       let localCoverVersion: String?
@@ -895,6 +900,7 @@ public final class IntentExecutor {
             albumKey: chosen.albumKey,
             contentVersion: chosen.contentVersion,
             artistImageUrl: chosen.artistImageUrl,
+            artistImageLadderUrl: chosen.artistImageLadderUrl,
             coverUrl: chosen.coverUrl,
             coverIsOverride: chosen.coverIsOverride,
             localCoverVersion: chosen.localCoverVersion,
@@ -1015,6 +1021,7 @@ public final class IntentExecutor {
             await materializeArtistImageFromUrl(
               subsonicIds: job.subsonicIds,
               imageUrl: imageUrl,
+              ladderUrl: job.artistImageLadderUrl,
               accountInfo: accountInfo,
               // The heal must overwrite the existing padded-square file, so it
               // forces past materialize's idempotent "already on disk" gate.
@@ -1890,6 +1897,25 @@ public final class IntentExecutor {
     }
   }
 
+  /// The decodable bytes at `url`, or nil (an error status, an empty or undecodable body, a
+  /// network failure).
+  nonisolated private static func fetchArtistPhoto(_ url: URL) async -> Data? {
+    var urlRequest = URLRequest(url: url)
+    // Well under URLSession's 60s default: these run serially inside the poll.
+    urlRequest.timeoutInterval = 15
+    do {
+      let (downloaded, response) = try await URLSession.shared.data(for: urlRequest)
+      guard let http = response as? HTTPURLResponse,
+            (200 ..< 300).contains(http.statusCode), !downloaded.isEmpty,
+            CoverImageStore.isDecodable(downloaded)
+      else { return nil }
+      return downloaded
+    } catch {
+      print("Cassette poll: artist photo fetch failed - \(error.localizedDescription)")
+      return nil
+    }
+  }
+
   /// True when this album's ANCHORED artist still lacks its catalog face on disk —
   /// the signal to pull `job.artistImageUrl` from R2. Unlike `hasHealthyArtistImage`
   /// this does NOT skip cloud-identity ids (`inherited-artist:`/`catalog-artist:`):
@@ -1937,10 +1963,15 @@ public final class IntentExecutor {
   /// `force`, an artist already carrying its photo on disk is left untouched (no
   /// network). Un-shares a poisoned shared row first so the photo can't leak onto a
   /// featured artist. Models `forceRefreshNativeCover` (the album-cover twin).
+  ///
+  /// `ladderUrl` is the same photo at the image ladder's top rung (1200), tried first so the
+  /// phone keeps a 1200 copy rather than the full original; `imageUrl` is the fallback when
+  /// the ladder is unreachable or refuses it. Photos already on the phone stay as they are.
   @discardableResult
   private func materializeArtistImageFromUrl(
     subsonicIds: [String],
     imageUrl: String,
+    ladderUrl: String? = nil,
     accountInfo: AccountInfo,
     force: Bool
   ) async
@@ -2003,21 +2034,14 @@ public final class IntentExecutor {
     }
     guard let artworkObjectID, let remoteInfo else { return false }
 
-    var urlRequest = URLRequest(url: url)
-    // Well under URLSession's 60s default: these run serially inside the poll.
-    urlRequest.timeoutInterval = 15
-    let data: Data
-    do {
-      let (downloaded, response) = try await URLSession.shared.data(for: urlRequest)
-      guard let http = response as? HTTPURLResponse,
-            (200 ..< 300).contains(http.statusCode), !downloaded.isEmpty,
-            CoverImageStore.isDecodable(downloaded)
-      else { return false }
-      data = downloaded
-    } catch {
-      print("Cassette poll: artist photo fetch failed - \(error.localizedDescription)")
-      return false
+    var data: Data?
+    if let ladderUrl, let ladder = URL(string: ladderUrl) {
+      data = await Self.fetchArtistPhoto(ladder)
     }
+    if data == nil {
+      data = await Self.fetchArtistPhoto(url)
+    }
+    guard let data else { return false }
 
     let fileManager = CacheFileManager.shared
     guard let relFilePath = fileManager.createRelPath(for: remoteInfo, account: accountInfo),

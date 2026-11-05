@@ -203,7 +203,10 @@ open class EntityImageView: UIView {
     }
     // A picked cover already materialized on disk for THIS url — local, offline, no flash.
     // Decoded at this view's size (a 70pt row, not the 1400px upload), once (BUG-819).
-    let maxPixel = CoverImageStore.decodePixels(forPoints: max(bounds.width, bounds.height))
+    let maxPixel = CoverImageStore.decodePixels(
+      for: bounds.size,
+      scale: traitCollection.displayScale
+    )
     if let local = CassetteCloudPlaylistBridge.materializedCoverImage(
       for: playlistId,
       url: urlKey,

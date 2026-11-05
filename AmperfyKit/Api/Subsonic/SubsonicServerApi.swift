@@ -400,11 +400,11 @@ final class SubsonicServerApi: URLCleanser, Sendable {
     // never upscales, so conforming covers are served byte-for-byte unchanged and
     // only oversized imports (e.g. a 6000² cover that decodes to ~144MB and gets
     // the phone jettisoned under memory pressure) are downsized on serve.
-    // heroMaxPixel is the largest size any surface renders — the album-detail hero
-    // and the now-playing/lock-screen image, which getImageToDisplayImmediately
-    // downsamples to ≤heroMaxPixel before handing it to MPMediaItemArtwork — so a
-    // larger request would buy no visible sharpness anywhere, only decode risk.
-    urlComp.addQueryItem(name: "size", value: CoverImageStore.heroMaxPixel)
+    // The size is the image ladder's top rung (1200, docs/reference/CASSETTE_IMAGES.md),
+    // the largest any surface decodes; the phone keeps it plus its own 480 thumb. It was
+    // 1000 until 2026-11-04: a cover is stored by its artwork id, not this address, so
+    // covers already on the phone stay as they are and only new pulls ask 1200.
+    urlComp.addQueryItem(name: "size", value: CoverImageStore.topRung)
     return try createUrl(from: urlComp)
   }
 

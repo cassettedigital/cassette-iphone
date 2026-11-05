@@ -63,10 +63,9 @@ extension LibraryEntityImage {
     guard let fullPath = libraryEntity.imagePath(setting: artworkDisplayPreference) else {
       return nil
     }
-    let key = CoverImageStore.decodeKey(
-      forFullPath: fullPath,
-      points: CoverImageStore.smallSurfaceMaxPt
-    )
+    // The 480 rung, from the thumb: what callers that need a picture at once (the lock screen,
+    // notifications, CarPlay) have always been given.
+    let key = CoverImageStore.decodeKey(forFullPath: fullPath, rung: CoverImageStore.thumbMaxPixel)
     if useCache, let cachedImg = CoverBitmapCache.shared.image(for: key) {
       return cachedImg
     }
@@ -87,8 +86,8 @@ public struct CoverDecodeKey: Hashable, Sendable {
 
 // MARK: - CoverBitmapCache
 
-/// cassette (BUG-816): the decoded covers, by file and size. Bounded by bytes (a hero is about
-/// 4 MB, a row about 0.2 MB) and emptied on a memory warning; it had no limit at all, so
+/// cassette (BUG-816): the decoded covers, by file and size. Bounded by bytes (a 1200 hero is
+/// about 6 MB, a 240 row about 0.2 MB) and emptied on a memory warning; it had no limit at all, so
 /// scrolling a big library grew it until iOS stepped in.
 @MainActor
 public final class CoverBitmapCache {
@@ -371,10 +370,17 @@ public class LibraryEntityImage: RoundedImage {
       shownKey = nil
       return
     }
-    // The decode this view's size calls for: rows the thumb at 240px, tiles the thumb at
-    // 480px, heroes the full cover at 1000px. Driven by the bounds, so it settles after layout.
+    // The decode this view's size calls for: its ladder rung at the screen's scale, from the
+    // thumb up to 480, the full cover above. Driven by the bounds, so it settles after layout.
     let points = max(bounds.width, bounds.height)
-    let key = CoverImageStore.decodeKey(forFullPath: fullPath, points: points)
+    let key = CoverImageStore.decodeKey(
+      forFullPath: fullPath,
+      size: bounds.size,
+      scale: traitCollection.displayScale,
+      aspect: entity is Artist
+        ? CassetteKitTokens.Images.assumedPhotoAspect
+        : CassetteKitTokens.Images.assumedCoverAspect
+    )
 
     // Already showing that size — nothing to do (avoids redundant decodes on every
     // layout pass).
@@ -480,38 +486,56 @@ public class LibraryEntityImage: RoundedImage {
 /// a capped full file plus a ~480px square thumb beside it (`<id>_thumb.<ext>`),
 /// decoded at the size the view actually needs.
 public enum CoverImageStore {
-  /// Thumb tier longest side — crisp in the 160pt carousel at 3x.
+  /// The image ladder's top rung, 1200 (docs/reference/CASSETTE_IMAGES.md; the rungs come from
+  /// packages/cassette-kit tokens.json through CassetteKitTokens). The size every cover is asked
+  /// from the hub at and the largest any surface decodes. Covers pulled before 2026-11-04 were
+  /// asked at 1000 and stay as they are.
+  public static let topRung = CassetteKitTokens.Images
+    .rungs[CassetteKitTokens.Images.rungs.count - 1]
+  /// Thumb tier longest side, the 480 rung: written beside each full cover, and read for every
+  /// surface whose rung is 480 or smaller (rows and small tiles), so they never open the full file.
   public static let thumbMaxPixel = 480
-  /// Full/hero tier decode cap — covers the 240pt detail hero and ≤360pt
-  /// now-playing hero at 3x. Also the off-main decode ceiling for the full file.
-  public static let heroMaxPixel = 1000
-  /// Surfaces at or below this point size use the thumb tier.
+  /// Placeholder sizes only (placeholderSide); covers are sized by the ladder.
   public static let smallSurfaceMaxPt: CGFloat = 200
-  /// cassette (BUG-816): rows (songs, playlists, queue, mini player: 40-80pt) decode the
-  /// thumb at this size, 80pt at 3x. They held the 480px thumb, about 11 times the pixels
-  /// a 48pt row shows.
-  public static let rowMaxPixel = 240
   public static let rowSurfaceMaxPt: CGFloat = 80
 
-  /// What a surface whose longest side is `points` decodes: the thumb (when one exists) at
-  /// 240px for rows or 480px for tiles, else the full cover capped to the same size; heroes
-  /// the full cover at 1000px. An unknown size (0) counts as a hero, so callers wait for
-  /// layout rather than decode it.
-  public static func decodeKey(forFullPath full: String, points: CGFloat) -> CoverDecodeKey {
-    let maxPixel = decodePixels(forPoints: points)
-    guard maxPixel < heroMaxPixel else { return CoverDecodeKey(path: full, maxPixel: maxPixel) }
-    return CoverDecodeKey(
-      path: preferredSourcePath(forFullPath: full, smallSurface: true),
-      maxPixel: maxPixel
+  /// What a surface of `size` points at `scale` decodes: its ladder rung (decodePixels), read
+  /// from the thumb (when one exists) for rungs it holds, else from the full cover.
+  public static func decodeKey(
+    forFullPath full: String,
+    size: CGSize,
+    scale: CGFloat,
+    aspect: Double = CassetteKitTokens.Images.assumedCoverAspect
+  )
+    -> CoverDecodeKey {
+    decodeKey(forFullPath: full, rung: decodePixels(for: size, scale: scale, aspect: aspect))
+  }
+
+  /// The decode for a rung already chosen: the thumb serves 480 and below.
+  public static func decodeKey(forFullPath full: String, rung: Int) -> CoverDecodeKey {
+    CoverDecodeKey(
+      path: preferredSourcePath(forFullPath: full, smallSurface: rung <= thumbMaxPixel),
+      maxPixel: rung
     )
   }
 
-  /// The decode size for a surface whose longest side is `points`: 240px for rows, 480px
-  /// for tiles, 1000px for heroes and for an unknown size (0).
-  public static func decodePixels(forPoints points: CGFloat) -> Int {
-    if points > 1, points <= rowSurfaceMaxPt { return rowMaxPixel }
-    if points > 1, points <= smallSurfaceMaxPt { return thumbMaxPixel }
-    return heroMaxPixel
+  /// The ladder rung for a surface of `size` points at `scale`, showing a picture of `aspect`
+  /// cropped to fill: the kit's one pick rule, so a 48pt row at 3x reads 240 and a 360pt hero
+  /// 1200, and the same row on a 2x screen 120. An unknown size (not laid out) is the top rung,
+  /// so callers wait for layout rather than decode it; an unknown scale counts as 3x.
+  public static func decodePixels(
+    for size: CGSize,
+    scale: CGFloat,
+    aspect: Double = CassetteKitTokens.Images.assumedCoverAspect
+  )
+    -> Int {
+    guard size.width > 1, size.height > 1 else { return topRung }
+    return CassetteKitTokens.Images.pickRung(
+      w: Double(size.width),
+      h: Double(size.height),
+      scale: Double(scale > 0 ? scale : 3),
+      aspect: aspect
+    )
   }
 
   /// cassette (BUG-817): the side, in points, to draw a "no cover" placeholder for a surface

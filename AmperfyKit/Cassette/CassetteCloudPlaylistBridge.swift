@@ -199,11 +199,11 @@ public enum CassetteCloudPlaylistBridge {
 
   /// The playlist's picked cover already on disk, IF it was materialized for this
   /// exact url — so a cold/offline launch renders it with no network. Decoded no larger
-  /// than `maxPixel` (the surface's size, the 1000px hero by default) and kept in memory.
+  /// than `maxPixel` (the surface's rung, the ladder's top rung by default) and kept in memory.
   nonisolated public static func materializedCoverImage(
     for playlistId: String,
     url: String,
-    maxPixel: Int = CoverImageStore.heroMaxPixel
+    maxPixel: Int = CoverImageStore.topRung
   )
     -> UIImage? {
     guard UserDefaults.standard.string(forKey: materializedUrlKey(playlistId)) == url,

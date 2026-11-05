@@ -362,6 +362,25 @@ public struct CassetteIntentTracksResponse: Sendable, Decodable {
   public let artist: CassetteSyncArtist?
 }
 
+// MARK: - CassetteImageRef
+
+/// A picture on the image ladder (docs/reference/CASSETTE_IMAGES.md; `ImageRefJson` in
+/// @discovery/cassette-contract). `src` carries `{rung}`, replaced with one of the kit's rungs
+/// (120, 240, 480, 800, 1200); `w` and `h` are the natural size when the cloud knows it. Always
+/// sent beside the old url fields, which keep their exact values.
+public struct CassetteImageRef: Sendable, Decodable, Equatable {
+  public let src: String
+  public let w: Int?
+  public let h: Int?
+  public let kind: String?
+
+  /// The address of `rung`, or nil when `src` is not a ladder template.
+  public func url(rung: Int) -> String? {
+    guard src.contains("{rung}") else { return nil }
+    return src.replacingOccurrences(of: "{rung}", with: String(rung))
+  }
+}
+
 // MARK: - CassetteDeviceArtworkAlbum
 
 /// One owned album in the artwork backfill manifest: the album artist's
@@ -378,6 +397,10 @@ public struct CassetteDeviceArtworkAlbum: Sendable, Decodable {
   public let albumName: String
   public let artistImageUrl: String?
   public let artistThumbUrl: String?
+  /// The artist photo on the image ladder. The phone keeps its top rung and falls back to
+  /// `artistImageUrl` when that fails; `artistImageUrl` stays the photo's identity (it is what
+  /// `contentVersion` hashes). Optional so an older server response still decodes.
+  public let artistImage: CassetteImageRef?
   public let coverUrl: String?
   public let coverThumbUrl: String?
   /// True when cover_url is the user's OWN chosen cover (an override), not our
@@ -396,6 +419,7 @@ public struct CassetteDeviceArtworkAlbum: Sendable, Decodable {
     case albumName = "album_name"
     case artistImageUrl = "artist_image_url"
     case artistThumbUrl = "artist_thumb_url"
+    case artistImage = "artist_image"
     case coverUrl = "cover_url"
     case coverThumbUrl = "cover_thumb_url"
     case coverIsOverride = "cover_is_override"
