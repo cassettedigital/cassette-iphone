@@ -86,6 +86,10 @@ public enum HomeSection: Int, Sendable, CaseIterable, Codable {
   // cassette 2026-10-28 (One Home): the way to every shelf made today, at the end of Home.
   // Header-only. Ordinal 23.
   case allShelves
+  // cassette 2026-11-07 (BUG-899): the first-run computer card, leading Home until the
+  // phone's music is in. Header-only, phone Home only: never in the cloud's rows, the stand-in
+  // line-up, the Home editor or CarPlay. Ordinal 24.
+  case computer
 
   // cassette redesign (Surface 4): Resume leads the Home IA again - a
   // single full-width card sourced from the lastPlayedDate FRCs.
@@ -149,6 +153,7 @@ public enum HomeSection: Int, Sendable, CaseIterable, Codable {
     case .putSomethingOn: return "Put Something On"
     case .reach: return "Shelf"
     case .allShelves: return "All Shelves"
+    case .computer: return "Your Computer"
     }
   }
 
@@ -182,6 +187,7 @@ public enum HomeSection: Int, Sendable, CaseIterable, Codable {
     case .putSomethingOn: return false
     case .reach: return false
     case .allShelves: return false
+    case .computer: return false
     }
   }
 }

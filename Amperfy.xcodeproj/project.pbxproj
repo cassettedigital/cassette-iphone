@@ -7,6 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		097F9310AEE8773952166D12 /* CardMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 391CA06635F7DA4438C20194 /* CardMotion.swift */; };
+		387C4B56BE84EB4861CE9F74 /* BlurText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C11029D42FA5E20718ECA9B /* BlurText.swift */; };
+		A09A6D9EEEBADF902CC37977 /* FadeText.swift in Sources */ = {isa = PBXBuildFile; fileRef = C718AFD4FEDDEBAF0591E310 /* FadeText.swift */; };
+		4916FF80CB76723015C32F58 /* LibraryStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E9EDCD2BBFE90F26155CD89 /* LibraryStrip.swift */; };
+		E48AF7AA003470AA4ED34D89 /* ComputerCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50237DD4C756B68FD2AC7901 /* ComputerCard.swift */; };
+		CEEAABC884D8365890013826 /* ComputerCardModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BB33626A80C8C4B971082C9 /* ComputerCardModel.swift */; };
+		AEA00962DAEC00D246947165 /* ComputerCardHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673DF103F1444A243EED974E /* ComputerCardHeaderView.swift */; };
 		C45E7A022F00000000C0FFEE /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C45E7A012F00000000C0FFEE /* PrivacyInfo.xcprivacy */; };
 		00B67F44CBFBBD335E338CC8 /* MoodDoors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24BADE729248DB7916A6185F /* MoodDoors.swift */; };
 		104CAEAB8E0617219AE3F9A9 /* MoodDoorArt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3557CBE43996FBDA91123169 /* MoodDoorArt.swift */; };
@@ -658,6 +665,13 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		391CA06635F7DA4438C20194 /* CardMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardMotion.swift; sourceTree = "<group>"; };
+		9C11029D42FA5E20718ECA9B /* BlurText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlurText.swift; sourceTree = "<group>"; };
+		C718AFD4FEDDEBAF0591E310 /* FadeText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FadeText.swift; sourceTree = "<group>"; };
+		0E9EDCD2BBFE90F26155CD89 /* LibraryStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStrip.swift; sourceTree = "<group>"; };
+		50237DD4C756B68FD2AC7901 /* ComputerCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerCard.swift; sourceTree = "<group>"; };
+		3BB33626A80C8C4B971082C9 /* ComputerCardModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerCardModel.swift; sourceTree = "<group>"; };
+		673DF103F1444A243EED974E /* ComputerCardHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerCardHeaderView.swift; sourceTree = "<group>"; };
 		0E8869E388C9628CE20FADAE /* MoodDoorRow.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MoodDoorRow.swift; sourceTree = "<group>"; };
 		24BADE729248DB7916A6185F /* MoodDoors.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MoodDoors.swift; sourceTree = "<group>"; };
 		256157FBDC1FDF2EAF577851 /* MoodDoorsHeaderView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MoodDoorsHeaderView.swift; sourceTree = "<group>"; };
@@ -1335,6 +1349,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		DB396B7E79773A018B0E8EBE /* ComputerCard */ = {
+			isa = PBXGroup;
+			children = (
+				391CA06635F7DA4438C20194 /* CardMotion.swift */,
+				9C11029D42FA5E20718ECA9B /* BlurText.swift */,
+				C718AFD4FEDDEBAF0591E310 /* FadeText.swift */,
+				0E9EDCD2BBFE90F26155CD89 /* LibraryStrip.swift */,
+				50237DD4C756B68FD2AC7901 /* ComputerCard.swift */,
+				3BB33626A80C8C4B971082C9 /* ComputerCardModel.swift */,
+				673DF103F1444A243EED974E /* ComputerCardHeaderView.swift */,
+			);
+			path = ComputerCard;
+			sourceTree = "<group>";
+		};
 		50073BDB222EFEDC000130D8 /* Download */ = {
 			isa = PBXGroup;
 			children = (
@@ -2304,6 +2332,7 @@
 				50791E8228D36EAD006CE6E5 /* Settings */,
 				664024E6E757466CD5457EA6 /* Mixtape */,
 				5A7E5C0E1A2B3C4D5E6F7083 /* Share */,
+				DB396B7E79773A018B0E8EBE /* ComputerCard */,
 			);
 			path = SwiftUI;
 			sourceTree = "<group>";
@@ -2889,6 +2918,13 @@
 				5A7E5C0E1A2B3C4D5E6F7082 /* ShareSongSheet.swift in Sources */,
 				3B8D129D12068FA7E72180FF /* MoodDoorTile.swift in Sources */,
 				83A757819071977362D25C2F /* MoodDoorRow.swift in Sources */,
+				097F9310AEE8773952166D12 /* CardMotion.swift in Sources */,
+				387C4B56BE84EB4861CE9F74 /* BlurText.swift in Sources */,
+				A09A6D9EEEBADF902CC37977 /* FadeText.swift in Sources */,
+				4916FF80CB76723015C32F58 /* LibraryStrip.swift in Sources */,
+				E48AF7AA003470AA4ED34D89 /* ComputerCard.swift in Sources */,
+				CEEAABC884D8365890013826 /* ComputerCardModel.swift in Sources */,
+				AEA00962DAEC00D246947165 /* ComputerCardHeaderView.swift in Sources */,
 				54B093A83670B9A232FA0202 /* MoodDoorsHeaderView.swift in Sources */,
 				104CAEAB8E0617219AE3F9A9 /* MoodDoorArt.swift in Sources */,
 			);

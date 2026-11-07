@@ -22,6 +22,7 @@
 import AmperfyKit
 import CoreData
 import OSLog
+import SwiftUI
 import UIKit
 
 // MARK: - HomeVC
@@ -58,6 +59,12 @@ final class HomeVC: UICollectionViewController {
   private var appliedReachIsDeepDive: Bool?
   /// Each row's name as last drawn ("SHOUT|answer"), so a renamed row gets its header redrawn.
   private var shownHeadings: [HomeSection: String] = [:]
+  /// BUG-899: the first-run computer card, Home's lead row until the phone's music is in.
+  /// One hosting controller for the life of Home, so the card's motion survives redraws.
+  private let computerCard = ComputerCardModel()
+  private var computerCardHost: UIHostingController<ComputerCardRoot>?
+  /// The card's row height: the card's own target height, which it reports as it changes.
+  private var computerCardHeight: CGFloat = 260
 
   // MARK: - Init
 
@@ -160,6 +167,7 @@ final class HomeVC: UICollectionViewController {
       object: nil
     )
 
+    configureComputerCard()
     applySnapshot(animated: false)
     // Reflect a wave that is already moving when Home first appears.
     updateSyncBannerPresentation(animated: false)
@@ -296,7 +304,8 @@ final class HomeVC: UICollectionViewController {
     let hubName = CassetteSyncStatus.displayHubName(
       serverUrl: appDelegate.storage.settings.accounts.activeSetting.read.loginCredentials?.serverUrl
     )
-    let line = CassetteSyncStatus.statusLine(hubName: hubName)
+    // BUG-899: while the computer card leads Home it says all of this itself.
+    let line = computerCard.content == nil ? CassetteSyncStatus.statusLine(hubName: hubName) : nil
     // iOS 26: the line is the bar's own subtitle under "Home", Apple's place for a screen's
     // status. Nothing in the page moves when it comes and goes, and nothing scrolls under it
     // (the founder, 2026-10-31: the shelves slid about and showed through the floating line).
@@ -368,6 +377,7 @@ final class HomeVC: UICollectionViewController {
     // now that Home is on screen.
     appDelegate.storage.main.library.rollOffAgedHomeShelfEvents(for: account)
     recordForgottenShelfImpressionIfVisible()
+    computerCard.homeAppeared()
     // What's on at the Radio row's stations, read while Home is up (I-R1).
     if !watchingOnNow {
       watchingOnNow = true
@@ -377,6 +387,7 @@ final class HomeVC: UICollectionViewController {
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
+    computerCard.homeDisappeared()
     if watchingOnNow {
       watchingOnNow = false
       RadioOnNow.shared.end()
@@ -417,14 +428,16 @@ final class HomeVC: UICollectionViewController {
       let section = self?.dataSource.snapshot().sectionIdentifiers.element(at: sectionIndex)
       return Self.sectionLayout(
         for: section,
-        reachIsDeepDive: self?.sharedHome.reachShelf?.isDeepDive ?? false
+        reachIsDeepDive: self?.sharedHome.reachShelf?.isDeepDive ?? false,
+        computerCardHeight: self?.computerCardHeight ?? 260
       )
     }
   }
 
   private static func sectionLayout(
     for section: HomeSection?,
-    reachIsDeepDive: Bool = false
+    reachIsDeepDive: Bool = false,
+    computerCardHeight: CGFloat = 260
   )
     -> NSCollectionLayoutSection? {
     guard let section else { return nil }
@@ -445,7 +458,7 @@ final class HomeVC: UICollectionViewController {
     // HomeSection.swift) — a near-zero item group, all real height comes
     // from the boundary header that hosts MoodDoorRow's SwiftUI content.
     // One Home: All shelves is header-only too, its heading and chevron the whole row.
-    if section == .moodDoors || section == .allShelves {
+    if section == .moodDoors || section == .allShelves || section == .computer {
       let itemSize = NSCollectionLayoutSize(
         widthDimension: .fractionalWidth(1.0),
         heightDimension: .absolute(1)
@@ -468,7 +481,9 @@ final class HomeVC: UICollectionViewController {
       // song count under it (as an album tile), 2. All shelves is the heading alone.
       let headerSize = NSCollectionLayoutSize(
         widthDimension: .fractionalWidth(1.0),
-        heightDimension: .estimated(section == .allShelves ? CassetteHeading.tableHeaderHeight : 272)
+        heightDimension: section == .computer
+          ? .absolute(computerCardHeight)
+          : .estimated(section == .allShelves ? CassetteHeading.tableHeaderHeight : 272)
       )
       let header = NSCollectionLayoutBoundarySupplementaryItem(
         layoutSize: headerSize,
@@ -540,6 +555,66 @@ final class HomeVC: UICollectionViewController {
     return sectionLayout
   }
 
+  // MARK: - The computer card (BUG-899)
+
+  /// Hosts the one card, and keeps Home's row in step with it: the row comes and goes with
+  /// the card, and when the card eases to a new size the rows under it move on the same
+  /// curve over the same 600 ms.
+  private func configureComputerCard() {
+    let root = ComputerCardRoot(
+      model: computerCard,
+      onAction: { [weak self] action in self?.openComputerCardAction(action) },
+      onHeight: { [weak self] height in self?.computerCardHeightChanged(height) }
+    )
+    let host = UIHostingController(rootView: root)
+    host.view.backgroundColor = .clear
+    host.safeAreaRegions = []
+    computerCardHost = host
+    computerCard.onShownChange = { [weak self] in
+      guard let self else { return }
+      if computerCard.content != nil { measureComputerCard() }
+      applySnapshot(animated: true)
+      updateSyncBannerPresentation(animated: true)
+    }
+    if computerCard.content != nil { measureComputerCard() }
+  }
+
+  /// The card's height before it is first drawn, so its row opens at the right size.
+  private func measureComputerCard() {
+    guard let host = computerCardHost else { return }
+    let width = collectionView.bounds.width > 0 ? collectionView.bounds.width : view.bounds.width
+    guard width > 0 else { return }
+    let size = host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+    if size.height > 0 { computerCardHeight = ceil(size.height) }
+  }
+
+  private func computerCardHeightChanged(_ height: CGFloat) {
+    let height = ceil(height)
+    guard height > 0, abs(height - computerCardHeight) > 0.5 else { return }
+    computerCardHeight = height
+    guard dataSource.snapshot().sectionIdentifiers.contains(.computer),
+          viewIfLoaded?.window != nil else {
+      collectionView.collectionViewLayout.invalidateLayout()
+      return
+    }
+    let animator = UIViewPropertyAnimator(
+      duration: CardMotion.sizingDuration,
+      controlPoint1: CardMotion.sizingControlPoint1,
+      controlPoint2: CardMotion.sizingControlPoint2
+    ) { [weak self] in
+      guard let self else { return }
+      collectionView.collectionViewLayout.invalidateLayout()
+      collectionView.layoutIfNeeded()
+    }
+    animator.startAnimation()
+  }
+
+  /// The card's button: the site's page for it, inside the app.
+  private func openComputerCardAction(_ action: ComputerCard.Action) {
+    let page = CassetteWebPageVC(path: action.path, title: action.path.hasPrefix("/help") ? "Help" : nil, placeholder: nil)
+    navigationController?.pushViewController(page, animated: true)
+  }
+
   // MARK: - CollectionView Setup
 
   private func configureCollectionView() {
@@ -576,6 +651,12 @@ final class HomeVC: UICollectionViewController {
       MoodDoorsHeaderView.self,
       forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
       withReuseIdentifier: MoodDoorsHeaderView.reuseID
+    )
+    // BUG-899: the first-run computer card's row (header-only; Home lends it the one card).
+    collectionView.register(
+      ComputerCardHeaderView.self,
+      forSupplementaryViewOfKind: UICollectionView.elementKindSectionHeader,
+      withReuseIdentifier: ComputerCardHeaderView.reuseID
     )
     // One Home: Deep dive's big card, and Nostalgia's mix among the reaching row's records.
     collectionView.register(
@@ -710,6 +791,16 @@ final class HomeVC: UICollectionViewController {
             .element(at: indexPath.section)
       else {
         return nil
+      }
+
+      if snapshotSection == .computer {
+        guard let cardHeader = collectionView.dequeueReusableSupplementaryView(
+          ofKind: kind,
+          withReuseIdentifier: ComputerCardHeaderView.reuseID,
+          for: indexPath
+        ) as? ComputerCardHeaderView, let self, let host = computerCardHost else { return nil }
+        cardHeader.host(host, in: self)
+        return cardHeader
       }
 
       if snapshotSection == .moodDoors {
@@ -856,6 +947,12 @@ final class HomeVC: UICollectionViewController {
     // dropped repeat instead of taking the whole app down. Belt to updatePlaylists'
     // suspenders after the applySnapshot crash cluster (build 2.1.1(3)).
     var seenSections = Set<HomeSection>()
+    // BUG-899: until the phone's music is in, Home leads with the computer card.
+    let showsComputerCard = computerCard.content != nil && computerCardHost != nil
+    if showsComputerCard {
+      snapshot.appendSections([.computer])
+      seenSections.insert(.computer)
+    }
     for section in sharedHome.orderedVisibleSections {
       guard seenSections.insert(section).inserted else { continue }
       // cassette: .moodDoors is a static, always-present header-only
@@ -946,7 +1043,7 @@ final class HomeVC: UICollectionViewController {
     let shouldAnimate = animated && (viewIfLoaded?.window != nil)
     dataSource.apply(snapshot, animatingDifferences: shouldAnimate)
     if relayout { collectionView.collectionViewLayout.invalidateLayout() }
-    refreshEmptyLibraryState(hasItems: totalItems > 0)
+    refreshEmptyLibraryState(hasItems: totalItems > 0 || showsComputerCard)
     // cassette (Forgotten Albums): the shelf may have just populated while Home
     // is visible — record the impression (per-day idempotent).
     recordForgottenShelfImpressionIfVisible()
