@@ -458,11 +458,23 @@ public struct CassetteTrackFreshnessEntry: Sendable, Decodable {
   public let cassetteLocalId: String
   public let subsonicTrackId: String
   public let audioVersion: String?
+  /// When the song's file came into being on the computer: a re-rip makes a new file, a tag
+  /// write keeps the date. nil until the computer reports it (BUG-897).
+  public let fileCreatedAt: Date?
 
   enum CodingKeys: String, CodingKey {
     case cassetteLocalId = "cassette_local_id"
     case subsonicTrackId = "subsonic_track_id"
     case audioVersion = "audio_version"
+    case fileCreatedAt = "file_created_at"
+  }
+
+  public init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    self.cassetteLocalId = try c.decode(String.self, forKey: .cassetteLocalId)
+    self.subsonicTrackId = try c.decode(String.self, forKey: .subsonicTrackId)
+    self.audioVersion = try c.decodeIfPresent(String.self, forKey: .audioVersion)
+    self.fileCreatedAt = CassetteISODate.parse(try c.decodeIfPresent(String.self, forKey: .fileCreatedAt))
   }
 }
 

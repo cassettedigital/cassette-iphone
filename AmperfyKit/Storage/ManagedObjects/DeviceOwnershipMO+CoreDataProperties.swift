@@ -39,11 +39,11 @@ extension DeviceOwnershipMO {
   public var fileSizeBytes: Int64
   @NSManaged
   public var subsonicTrackId: String?
-  /// Content fingerprint of this track's own file, as last applied from the
-  /// server's track-freshness manifest (audio_version). Written once a
-  /// download completes; compared against the manifest on the next sweep so
-  /// a re-rip that changes bytes without changing title/duration (invisible
-  /// to cassetteLocalId by design) still gets noticed and re-fetched.
+  /// The hub version this copy was made from (the manifest's audio_version), or nil when
+  /// the phone can't vouch for it (BUG-897): set as a replacement lands, or by the sweep once
+  /// the hub's file date shows the copy came from that very file. Compared against the
+  /// manifest so a re-rip that changes bytes without changing title/duration (invisible to
+  /// cassetteLocalId by design) still gets noticed and re-fetched.
   @NSManaged
   public var contentFingerprint: String?
 }

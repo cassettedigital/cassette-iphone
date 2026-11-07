@@ -87,7 +87,8 @@ public final class DeviceOwnershipManager {
     public let subsonicTrackId: String?
     public let fileExtension: String
     public let downloadedAt: Date
-    /// Set when this file replaced a changed song (BUG-882); nil leaves the stored one alone.
+    /// The hub version this copy was made from, when the download knew it (a replacement for a
+    /// changed song); nil for an add, whose source the next sweep vouches for (BUG-897).
     public let contentFingerprint: String?
     public init(
       cassetteLocalId: String,
@@ -127,9 +128,8 @@ public final class DeviceOwnershipManager {
             for: entry.cassetteLocalId,
             extension: entry.fileExtension
           )
-          if let fingerprint = entry.contentFingerprint {
-            ownership.contentFingerprint = fingerprint
-          }
+          // a new copy is made from what this download fetched, never from a value heard before it
+          ownership.contentFingerprint = entry.contentFingerprint
         }
         try context.save() // one save for the whole batch
       } catch {
@@ -156,6 +156,46 @@ public final class DeviceOwnershipManager {
       }
     }
     if let caught { throw caught }
+  }
+
+  /// Stamp many copies' made-from versions in one save (the sweep vouching for copies, BUG-897).
+  public func stampContentFingerprints(_ stamps: [(cassetteLocalId: String, fingerprint: String)]) throws {
+    guard !stamps.isEmpty else { return }
+    var caught: Error?
+    context.performAndWait {
+      do {
+        for stamp in stamps {
+          try fetchOneInternal(cassetteLocalId: stamp.cassetteLocalId)?.contentFingerprint = stamp.fingerprint
+        }
+        try context.save()
+      } catch {
+        caught = error
+      }
+    }
+    if let caught { throw caught }
+  }
+
+  /// Forget every copy's made-from version: the one-time start of BUG-897, when the values the
+  /// phone had were the first ones it heard, not the ones its copies were made from.
+  @discardableResult
+  public func clearContentFingerprints() throws -> Int {
+    var cleared = 0
+    var caught: Error?
+    context.performAndWait {
+      do {
+        let request: NSFetchRequest<DeviceOwnershipMO> = DeviceOwnershipMO.fetchRequest()
+        request.predicate = NSPredicate(format: "contentFingerprint != nil")
+        for row in try context.fetch(request) {
+          row.contentFingerprint = nil
+          cleared += 1
+        }
+        if cleared > 0 { try context.save() }
+      } catch {
+        caught = error
+      }
+    }
+    if let caught { throw caught }
+    return cleared
   }
 
   /// Delete the ownership record and its backing file. Idempotent.

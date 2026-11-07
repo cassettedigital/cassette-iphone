@@ -395,25 +395,23 @@ public final class IntentExecutor {
   /// closes the gap, the audio sibling of the artwork manifest's
   /// local_cover_version handling.
   ///
-  /// - A track this device has never stamped (contentFingerprint == nil)
-  ///   ADOPTS the manifest's value silently — the file it already has IS
-  ///   current, there's nothing to correct, and treating "never checked" as
-  ///   "changed" would force a one-time re-download of the entire library the
-  ///   moment this feature ships.
-  /// - A track whose STORED fingerprint differs from the manifest's is a real
-  ///   change, and the phone keeps the copy it has until the new one lands
-  ///   (BUG-882). It used to delete first and wait for the cloud to queue the
-  ///   song again, so a retag on the computer (the hub's own MusicBrainz ID
-  ///   write included) emptied those songs off the phone, away from home too.
-  ///   Now: only when the computer answers, at most `trackRefreshesPerSweep`
-  ///   songs a pass, the new copy goes through the same background download as
-  ///   an add, replaces the file only once it is complete, and stamps the new
-  ///   fingerprint as it lands. A failed download leaves the old song playing
-  ///   and the next sweep tries again.
-  /// - Two fingerprints of different kinds (a scheme before a colon, none on
-  ///   today's) aren't a change either: the computer changed how it
-  ///   fingerprints, not the song, so the phone adopts the new one silently
-  ///   rather than downloading the whole library again.
+  /// The phone is a satellite of the computer: "if the hub updates a file, every satellite
+  /// follows" (the founder, BUG-897). Each copy carries the hub version it was made from
+  /// (`contentFingerprint`), set only when that is known, never from a value merely heard:
+  ///
+  /// - A copy with a made-from version: no version from the hub, nothing to do; a version of
+  ///   another kind (the part before a colon; old ones have none) is the computer measuring
+  ///   differently, adopted silently unless the hub's file is newer than the copy; the same
+  ///   kind with another value is a changed song, fetched again.
+  /// - A copy without one (every copy from before this, and every new add until vouched for):
+  ///   with no file date from the hub yet, nothing, and no version is adopted for it; a hub
+  ///   file newer than the copy means a re-rip the phone never got, fetched again; otherwise
+  ///   the copy came from that very file and takes its version.
+  ///
+  /// A song fetched again keeps the old copy playing until the new one lands (BUG-882), only
+  /// when the computer answers, at most `trackRefreshesPerSweep` a pass; it is stamped with the
+  /// version it was fetched for as it lands. A failed download leaves the old song and the
+  /// next sweep tries again.
   private func sweepTrackFreshnessIfDue() async {
     if let last = lastTrackFreshnessSweepAt,
        Date().timeIntervalSince(last) < Self.trackFreshnessMinInterval {
@@ -431,26 +429,43 @@ public final class IntentExecutor {
     lastTrackFreshnessSweepAt = Date()
 
     let manager = DeviceOwnershipManager(context: AmperKit.shared.storage.main.context)
-    var adopted = 0
-    var changed: [(entry: CassetteTrackFreshnessEntry, version: String, mbid: String?, ext: String)] = []
-    for entry in manifest.tracks {
-      guard let manifestVersion = entry.audioVersion else { continue } // UNKNOWN — no signal yet
-      guard let owned = try? manager.fetchOne(cassetteLocalId: entry.cassetteLocalId)
-      else { continue } // not actually on this device, or the fetch failed — nothing to check
-      let stored = owned.contentFingerprint
-      if stored == nil ||
-        Self.fingerprintScheme(stored ?? "") != Self.fingerprintScheme(manifestVersion) {
-        try? manager.stampContentFingerprint(
-          cassetteLocalId: entry.cassetteLocalId,
-          fingerprint: manifestVersion
-        )
-        adopted += 1
-      } else if stored != manifestVersion {
-        let ext = (owned.filePath as NSString).pathExtension
-        guard !ext.isEmpty else { continue }
-        changed.append((entry, manifestVersion, owned.mbid, ext))
+    // Once: the values the phone held were the first ones it heard, not what its copies were
+    // made from, so every copy starts out unvouched for (BUG-897).
+    if !UserDefaults.standard.bool(forKey: Self.madeFromResetKey) {
+      do {
+        let cleared = try manager.clearContentFingerprints()
+        UserDefaults.standard.set(true, forKey: Self.madeFromResetKey)
+        print("Cassette poll: track-freshness - \(cleared) copies to vouch for again")
+      } catch {
+        return
       }
     }
+
+    var stamps: [(cassetteLocalId: String, fingerprint: String)] = []
+    var changed: [(entry: CassetteTrackFreshnessEntry, version: String?, mbid: String?, ext: String)] = []
+    for entry in manifest.tracks {
+      guard let owned = try? manager.fetchOne(cassetteLocalId: entry.cassetteLocalId)
+      else { continue } // not actually on this device, or the fetch failed — nothing to check
+      let version = entry.audioVersion
+      switch CassetteFreshness.decide(
+        madeFrom: owned.contentFingerprint,
+        version: version,
+        fileCreatedAt: entry.fileCreatedAt,
+        downloadedAt: owned.downloadedAt
+      ) {
+      case .wait:
+        continue
+      case let .vouch(made):
+        stamps.append((entry.cassetteLocalId, made))
+        continue
+      case .fetchAgain:
+        break
+      }
+      let ext = (owned.filePath as NSString).pathExtension
+      guard !ext.isEmpty else { continue }
+      changed.append((entry, version, owned.mbid, ext))
+    }
+    try? manager.stampContentFingerprints(stamps)
 
     // Away from home, or with the computer asleep, nothing changes: the songs stay as they are.
     var refreshing = 0
@@ -473,26 +488,22 @@ public final class IntentExecutor {
         refreshing += 1
       }
     }
-    if adopted > 0 || !changed.isEmpty {
+    if !stamps.isEmpty || !changed.isEmpty {
       print(
-        "Cassette poll: track-freshness sweep — \(adopted) adopted, \(changed.count) changed, " +
-          "\(refreshing) refreshing (old copies kept until the new ones land)"
+        "Cassette poll: track-freshness sweep — \(stamps.count) vouched for, \(changed.count) to fetch again, " +
+          "\(refreshing) fetching (old copies kept until the new ones land)"
       )
     }
   }
+
+  /// Set once the one-time forgetting of heard-but-unproven versions has run (BUG-897).
+  private static let madeFromResetKey = "cassette.madeFrom.reset.v1"
 
   /// How many changed songs one sweep sends for again (sweeps run at most every
   /// five minutes), so a retag of a whole library comes across over a few hours
   /// instead of all at once.
   private static let trackRefreshesPerSweep = 50
 
-  /// The kind of a fingerprint: the part before a colon ("" for today's plain
-  /// ones), so the computer can change how it fingerprints without every phone
-  /// taking it as every song changed.
-  private static func fingerprintScheme(_ fingerprint: String) -> String {
-    guard let colon = fingerprint.firstIndex(of: ":") else { return "" }
-    return String(fingerprint[..<colon])
-  }
 
   /// Apply the catalog-blind album grouping (Phase 1, Gap 1) the cloud returned
   /// on the inventory report: collapse owned songs onto their group-key albums so
@@ -2309,5 +2320,51 @@ public final class IntentExecutor {
     } catch {
       return false
     }
+  }
+}
+
+// MARK: - CassetteFreshness
+
+/// What the sweep does with one copy on this phone, from the hub version it was made from (nil
+/// when the phone can't vouch for it), the hub's version now, when the hub's file came into
+/// being, and when the copy was downloaded (the satellite rule, BUG-897).
+public enum CassetteFreshness {
+  public enum Decision: Equatable {
+    /// nothing to do yet
+    case wait
+    /// the copy is made from this version; record it
+    case vouch(String)
+    /// a changed song or a re-rip the copy never got: fetch it again, keeping the old one until then
+    case fetchAgain
+  }
+
+  /// How far a hub file's date may sit after a copy's download and still be the file it came from.
+  public static let clockSlack: TimeInterval = 60
+
+  public static func decide(
+    madeFrom: String?,
+    version: String?,
+    fileCreatedAt: Date?,
+    downloadedAt: Date
+  ) -> Decision {
+    let sourceIsNewer = fileCreatedAt.map { $0 > downloadedAt.addingTimeInterval(clockSlack) } ?? false
+    if let madeFrom {
+      guard let version, version != madeFrom else { return .wait }
+      // the computer measuring differently is not a change, unless its file is newer than the copy
+      if kind(madeFrom) != kind(version), !sourceIsNewer { return .vouch(version) }
+      return .fetchAgain
+    }
+    // a copy nobody can vouch for: only the hub's file date decides, and a version is never
+    // adopted for it without one
+    guard fileCreatedAt != nil else { return .wait }
+    if sourceIsNewer { return .fetchAgain }
+    return version.map { .vouch($0) } ?? .wait
+  }
+
+  /// The kind of a fingerprint: the part before a colon ("" for the first ones), so the computer
+  /// can change how it measures without every phone taking it as every song changed.
+  public static func kind(_ fingerprint: String) -> String {
+    guard let colon = fingerprint.firstIndex(of: ":") else { return "" }
+    return String(fingerprint[..<colon])
   }
 }
