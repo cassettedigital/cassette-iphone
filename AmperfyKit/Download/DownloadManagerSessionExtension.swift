@@ -24,6 +24,14 @@ import Foundation
 import os.log
 
 extension DownloadManager: URLSessionDelegate, URLSessionDownloadDelegate {
+  /// cassette: the computer's own certificate, checked against its key (CassetteHubTrust, BUG-879).
+  nonisolated public func urlSession(
+    _ session: URLSession,
+    didReceive challenge: URLAuthenticationChallenge
+  ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+    CassetteHubTrust.answer(challenge)
+  }
+
   func fetch(downloadTaskInfo: DownloadTaskInfo) {
     let task = urlSession?.downloadTask(with: downloadTaskInfo.url)
     guard let task else { return }

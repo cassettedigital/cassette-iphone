@@ -19,6 +19,7 @@
 //  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+import Security
 import UIKit
 
 // MARK: - AppSettings
@@ -564,7 +565,8 @@ public struct AmperfySettings: Sendable, Codable {
   private var _accountSettings: AccountSettings = .init()
   public var accounts: AccountSettings {
     get {
-      guard let data = UserDefaults.standard
+      // In the Keychain, not the preferences file: it holds each music server's login (BUG-878).
+      guard let data = SecureSettingsStore
         .data(forKey: PersistentStorage.UserDefaultsKey.SettingsAccount.rawValue)
       else { return _accountSettings }
       do {
@@ -577,7 +579,7 @@ public struct AmperfySettings: Sendable, Codable {
       _accountSettings = newValue
       do {
         let data = try Self.encoder.encode(_accountSettings)
-        UserDefaults.standard.set(
+        SecureSettingsStore.setData(
           data,
           forKey: PersistentStorage.UserDefaultsKey.SettingsAccount.rawValue
         )
@@ -586,21 +588,122 @@ public struct AmperfySettings: Sendable, Codable {
   }
 
   /// Cassette fork — Layer 3: the bearer token obtained during Cassette
-  /// pairing/login, reused to authenticate /api/sync/* requests. Stored in
-  /// UserDefaults to stay consistent with the other credential storage here
-  /// (Keychain is a later hardening step). `nil` clears it.
+  /// pairing/login, reused to authenticate /api/sync/* requests. In the Keychain
+  /// with the music-server logins (SecureSettingsStore, BUG-878). `nil` clears it.
   public var cassetteBearerToken: String? {
     get {
-      UserDefaults.standard
+      SecureSettingsStore
         .string(forKey: PersistentStorage.UserDefaultsKey.CassetteBearerToken.rawValue)
     }
     set {
       let key = PersistentStorage.UserDefaultsKey.CassetteBearerToken.rawValue
-      if let newValue, !newValue.isEmpty {
-        UserDefaults.standard.set(newValue, forKey: key)
-      } else {
-        UserDefaults.standard.removeObject(forKey: key)
-      }
+      SecureSettingsStore.setString(newValue?.isEmpty == false ? newValue : nil, forKey: key)
     }
+  }
+}
+
+// MARK: - SecureSettingsStore
+
+/// The Keychain for what can sign this phone in: the Cassette sign-in and the saved
+/// music-server logins (BUG-878). They used to sit in the preferences file, which goes
+/// into every backup and onto any phone a backup is restored to. Kept after first
+/// unlock (background downloads and sync run with the phone locked) and on this
+/// device only. Reads are cached in memory, because the logins are read on nearly
+/// every screen and request. The first read moves what an older version left in the
+/// preferences file across, and removes it there once the Keychain holds it.
+public enum SecureSettingsStore {
+  private static let service = "digital.cassette.settings"
+  private static let lock = NSLock()
+  nonisolated(unsafe) private static var cache: [String: Data] = [:]
+  nonisolated(unsafe) private static var known: Set<String> = []
+
+  public static func string(forKey key: String) -> String? {
+    read(key, legacy: { UserDefaults.standard.string(forKey: key)?.data(using: .utf8) })
+      .flatMap { String(data: $0, encoding: .utf8) }
+  }
+
+  public static func setString(_ value: String?, forKey key: String) {
+    write(value?.data(using: .utf8), forKey: key, legacy: { UserDefaults.standard.set(value, forKey: key) })
+  }
+
+  public static func data(forKey key: String) -> Data? {
+    read(key, legacy: { UserDefaults.standard.data(forKey: key) })
+  }
+
+  public static func setData(_ data: Data?, forKey key: String) {
+    write(data, forKey: key, legacy: { UserDefaults.standard.set(data, forKey: key) })
+  }
+
+  private static func read(_ key: String, legacy: () -> Data?) -> Data? {
+    lock.lock()
+    defer { lock.unlock() }
+    if known.contains(key) { return cache[key] }
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query(key, [
+      kSecReturnData as String: true,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+    ]) as CFDictionary, &item)
+    if status == errSecSuccess, let data = item as? Data {
+      UserDefaults.standard.removeObject(forKey: key)
+      remember(data, key)
+      return data
+    }
+    // Locked before the first unlock since a restart, or another failure: answer from the
+    // preferences file if an older version left it there, and decide nothing for good.
+    guard status == errSecItemNotFound else { return legacy() }
+    guard let moving = legacy() else {
+      remember(nil, key)
+      return nil
+    }
+    if store(moving, key) { UserDefaults.standard.removeObject(forKey: key) }
+    remember(moving, key)
+    return moving
+  }
+
+  private static func write(_ data: Data?, forKey key: String, legacy: () -> ()) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard let data else {
+      SecItemDelete(query(key) as CFDictionary)
+      UserDefaults.standard.removeObject(forKey: key)
+      remember(nil, key)
+      return
+    }
+    // A Keychain that can't be written (locked since a restart) keeps the old behaviour
+    // rather than losing the sign-in; the next read moves it across.
+    if store(data, key) {
+      UserDefaults.standard.removeObject(forKey: key)
+    } else {
+      legacy()
+    }
+    remember(data, key)
+  }
+
+  private static func store(_ data: Data, _ key: String) -> Bool {
+    let update = SecItemUpdate(query(key) as CFDictionary, [
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ] as CFDictionary)
+    if update == errSecSuccess { return true }
+    guard update == errSecItemNotFound else { return false }
+    return SecItemAdd(query(key, [
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]) as CFDictionary, nil) == errSecSuccess
+  }
+
+  private static func query(_ key: String, _ extra: [String: Any] = [:]) -> [String: Any] {
+    var q: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: key,
+    ]
+    q.merge(extra) { _, new in new }
+    return q
+  }
+
+  private static func remember(_ data: Data?, _ key: String) {
+    cache[key] = data
+    known.insert(key)
   }
 }

@@ -23,8 +23,10 @@
 //  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+import CryptoKit
 import Foundation
 import os.log
+import Security
 import UIKit
 
 // MARK: - CassetteSyncError
@@ -600,9 +602,13 @@ public struct CassetteAccount: Sendable, Decodable {
   /// decode -> false for older deploys, so a server that does not emit it hides Mixtape.
   public let isBetaTester: Bool
 
+  /// The key of the computer's own certificate, for the encrypted link to it (CassetteHubTrust,
+  /// BUG-879). nil while the cloud has none for it (a computer app from before).
+  public let lanTlsPin: String?
+
   enum CodingKeys: String, CodingKey {
     case email, name, image, avatarPreset, serverMode, sidecarPort, downloadQuality,
-         diagnosticsConsent, isBetaTester
+         diagnosticsConsent, isBetaTester, lanTlsPin
   }
 
   public init(from decoder: Decoder) throws {
@@ -617,6 +623,7 @@ public struct CassetteAccount: Sendable, Decodable {
     self.diagnosticsConsent = try c
       .decodeIfPresent(Bool.self, forKey: .diagnosticsConsent) ?? true
     self.isBetaTester = try c.decodeIfPresent(Bool.self, forKey: .isBetaTester) ?? false
+    self.lanTlsPin = try c.decodeIfPresent(String.self, forKey: .lanTlsPin)
   }
 }
 
@@ -770,10 +777,10 @@ public final class CassetteSyncAPI: @unchecked Sendable {
 
   // MARK: Token
 
-  /// The bearer token persisted at login. Read straight from UserDefaults so
-  /// this is safe to call off the main actor.
+  /// The bearer token persisted at login, from the Keychain (SecureSettingsStore,
+  /// BUG-878), which is safe to call off the main actor.
   public static var bearerToken: String? {
-    UserDefaults.standard
+    SecureSettingsStore
       .string(forKey: PersistentStorage.UserDefaultsKey.CassetteBearerToken.rawValue)
   }
 
@@ -847,14 +854,29 @@ public final class CassetteSyncAPI: @unchecked Sendable {
     return t > 0 ? Date(timeIntervalSince1970: t) : nil
   }
 
+  /// Ends this phone's sign-in on the cloud as well (BUG-878), so a copy of it (a backup, a sold
+  /// phone) stops working. Best effort: a phone offline at sign-out still forgets it locally, and
+  /// the cloud lets an unused sign-in lapse after 90 days.
+  nonisolated public static func revokeSignIn(_ token: String) async {
+    guard let url = URL(string: "\(wwwBase)/api/player/sign-out") else { return }
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.timeoutInterval = 10
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    let session = URLSession(configuration: .ephemeral)
+    _ = try? await session.data(for: request)
+    session.finishTasksAndInvalidate()
+  }
+
   /// Signing out signs out of Cassette (BUG-619): the phone forgets the sign-in and everything it kept for
   /// the person, so the next sign-in, theirs or someone else's, starts clean. The device's own state stays:
   /// its install id and diagnostics choice, the cover fixes it has made, the public station list, and the
   /// music, which the sign-out question decides on its own.
   nonisolated public static func forgetAccount() {
     let defaults = UserDefaults.standard
+    SecureSettingsStore.setString(nil, forKey: PersistentStorage.UserDefaultsKey.CassetteBearerToken.rawValue)
+    CassetteHubTrust.forget()
     let keys = [
-      PersistentStorage.UserDefaultsKey.CassetteBearerToken.rawValue,
       accountNameKey, accountEmailKey, accountImageKey, accountAvatarPresetKey,
       sidecarPortKey, macSummaryKey, macSummaryFetchedAtKey, downloadQualityKey,
       CassetteLibraryFilterProvider.serverModeDefaultsKey,
@@ -879,6 +901,8 @@ public final class CassetteSyncAPI: @unchecked Sendable {
   /// round-trip. A `nil`/empty name clears the stored name (so a later
   /// name removal upstream doesn't leave a stale label).
   nonisolated static func persistAccount(_ account: CassetteAccount) {
+    // a computer that made a new key, or got its first, is picked up here (BUG-879)
+    CassetteHubTrust.recordPin(account.lanTlsPin)
     let defaults = UserDefaults.standard
     // Snapshot the avatar-affecting fields BEFORE we overwrite them, so a change
     // pulled from another device can repaint the account chip in place.
@@ -1843,10 +1867,18 @@ final class CassetteAuthPreservingDelegate: NSObject, URLSessionTaskDelegate {
     completionHandler: @escaping (URLRequest?) -> ()
   ) {
     var newRequest = request
-    if let auth = task.originalRequest?.value(forHTTPHeaderField: "Authorization") {
+    // Only onto Cassette's own hosts over https: a redirect anywhere else, or to plain http,
+    // goes on without the sign-in (BUG-878).
+    if let auth = task.originalRequest?.value(forHTTPHeaderField: "Authorization"),
+       Self.keepsSignIn(request.url) {
       newRequest.setValue(auth, forHTTPHeaderField: "Authorization")
     }
     completionHandler(newRequest)
+  }
+
+  static func keepsSignIn(_ url: URL?) -> Bool {
+    guard let url, url.scheme == "https", let host = url.host?.lowercased() else { return false }
+    return host == "cassette.digital" || host == "www.cassette.digital"
   }
 }
 
@@ -2197,4 +2229,130 @@ public enum CloudPlayReconciler {
     if changed { storage.main.saveContext() }
     return changed
   }
+}
+
+// MARK: - CassetteHubTrust
+
+/// The encrypted link to the person's computer (BUG-879). Each computer makes its own
+/// certificate, with no name in it and nobody vouching for it, so the system's usual checks
+/// would refuse it. The phone instead compares the certificate's key with the one the cloud
+/// handed over for that computer (`lanTlsPin`: the SHA-256 of the key's SubjectPublicKeyInfo,
+/// base64) and trusts nothing else at that address. While the cloud has no key for the
+/// computer (a computer app from before), the phone stays on plain http.
+///
+/// The login's own address (`serverUrl`) never changes, because the phone's library is filed
+/// under it (Account.createInfo). Only the address in use (`activeBackendServerUrl`) moves
+/// between https and http.
+public enum CassetteHubTrust {
+  private static let pinKey = "cassette.lanTlsPin"
+  private static let hostKey = "cassette.lanTlsHost"
+
+  /// The computer's key as the cloud last reported it, or nil.
+  public static var pin: String? {
+    UserDefaults.standard.string(forKey: pinKey).flatMap { $0.isEmpty ? nil : $0 }
+  }
+
+  /// Remembers the key the cloud reports (at sign-in, and on every account fetch, so a new
+  /// key reaches the phone), and the computer's name when known. nil forgets the key.
+  public static func recordPin(_ pin: String?, host: String? = nil) {
+    if let pin, !pin.isEmpty {
+      UserDefaults.standard.set(pin, forKey: pinKey)
+    } else {
+      UserDefaults.standard.removeObject(forKey: pinKey)
+    }
+    if let host, !host.isEmpty { UserDefaults.standard.set(host.lowercased(), forKey: hostKey) }
+  }
+
+  public static func forget() {
+    UserDefaults.standard.removeObject(forKey: pinKey)
+    UserDefaults.standard.removeObject(forKey: hostKey)
+  }
+
+  /// The address to use for the computer: https while the cloud has its key, http otherwise.
+  public static func activeAddress(for serverUrl: String) -> String {
+    guard var parts = URLComponents(string: serverUrl), ["http", "https"].contains(parts.scheme ?? "")
+    else { return serverUrl }
+    parts.scheme = pin == nil ? "http" : "https"
+    return parts.string ?? serverUrl
+  }
+
+  /// Moves the active login between https and http to match the key on record. Only for the
+  /// computer Cassette paired, never a server someone set up by hand; a no-op when it matches.
+  @MainActor
+  public static func applyToActiveAccount() {
+    let accounts = AmperKit.shared.storage.settings.accounts
+    guard let info = accounts.active,
+          let credentials = accounts.getSetting(info).read.loginCredentials,
+          let host = URLComponents(string: credentials.serverUrl)?.host?.lowercased()
+    else { return }
+    let stored = UserDefaults.standard.string(forKey: hostKey)
+    guard stored == nil || stored == host else { return }
+    if stored == nil { UserDefaults.standard.set(host, forKey: hostKey) }
+    let current = credentials.activeBackendServerUrl
+    guard current == credentials.serverUrl || current == activeAddress(for: credentials.serverUrl)
+      || current.replacingOccurrences(of: "https://", with: "http://") == credentials.serverUrl
+    else { return } // the person picked another address in Settings
+    let wanted = activeAddress(for: credentials.serverUrl)
+    guard wanted != current else { return }
+    AmperKit.shared.storage.settings.accounts.updateSetting(info) { setting in
+      setting.loginCredentials?.activeBackendServerUrl = wanted
+    }
+    var updated = credentials
+    updated.activeBackendServerUrl = wanted
+    AmperKit.shared.getMeta(info).backendApi.provideCredentials(credentials: updated)
+  }
+
+  /// Whether a host is the computer's, whose certificate only its key answers for.
+  public static func isComputer(host: String) -> Bool {
+    guard pin != nil, let stored = UserDefaults.standard.string(forKey: hostKey) else { return false }
+    return host.lowercased() == stored
+  }
+
+  /// The answer to a server-trust challenge: the computer's key matches, or the connection is
+  /// refused. Every other host gets the system's usual handling.
+  public static func answer(_ challenge: URLAuthenticationChallenge)
+    -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+    let space = challenge.protectionSpace
+    guard space.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+          isComputer(host: space.host)
+    else { return (.performDefaultHandling, nil) }
+    guard let trust = space.serverTrust, let pin, keyPin(of: trust) == pin else {
+      return (.cancelAuthenticationChallenge, nil)
+    }
+    return (.useCredential, URLCredential(trust: trust))
+  }
+
+  /// The key's SHA-256 over its SubjectPublicKeyInfo, base64, as the computer reports it
+  /// (sha256 of the leaf's RawSubjectPublicKeyInfo). The computer's keys are P-256, whose
+  /// SubjectPublicKeyInfo is a fixed header and the 65-byte point.
+  public static func keyPin(of trust: SecTrust) -> String? {
+    guard let leaf = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first,
+          let key = SecCertificateCopyKey(leaf),
+          let attributes = SecKeyCopyAttributes(key) as? [String: Any],
+          "\(attributes[kSecAttrKeyType as String] ?? "")" == (kSecAttrKeyTypeECSECPrimeRandom as String),
+          "\(attributes[kSecAttrKeySizeInBits as String] ?? "")" == "256",
+          let point = SecKeyCopyExternalRepresentation(key, nil) as Data?, point.count == 65
+    else { return nil }
+    var info = Data(p256Header)
+    info.append(point)
+    return Data(SHA256.hash(data: info)).base64EncodedString()
+  }
+
+  private static let p256Header: [UInt8] = [
+    0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01,
+    0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00,
+  ]
+
+  /// For a session that reaches the computer.
+  public final class Delegate: NSObject, URLSessionDelegate, Sendable {
+    public func urlSession(
+      _ session: URLSession,
+      didReceive challenge: URLAuthenticationChallenge
+    ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+      CassetteHubTrust.answer(challenge)
+    }
+  }
+
+  /// One shared session for single requests to the computer (covers, the reachability check).
+  public static let session = URLSession(configuration: .default, delegate: Delegate(), delegateQueue: nil)
 }

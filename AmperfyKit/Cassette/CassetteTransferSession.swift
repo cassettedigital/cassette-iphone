@@ -43,6 +43,9 @@ struct CassetteTransferMetadata: Codable {
   let subsonicTrackId: String?
   let ext: String
   let intentId: String
+  /// A refresh's new fingerprint, stamped only once the new copy has landed (BUG-882).
+  /// Absent on adds and on tasks restored from before it existed.
+  var contentFingerprint: String?
 }
 
 // MARK: - CassetteTransferSession
@@ -104,7 +107,8 @@ public final class CassetteTransferSession: NSObject, @unchecked Sendable {
     mbid: String?,
     subsonicTrackId: String?,
     fileExtension ext: String,
-    intentId: String
+    intentId: String,
+    contentFingerprint: String? = nil
   ) async {
     // Skip if a task for this track already exists.
     if await isAlreadyInFlight(cassetteLocalId: cassetteLocalId) { return }
@@ -115,7 +119,8 @@ public final class CassetteTransferSession: NSObject, @unchecked Sendable {
       mbid: mbid,
       subsonicTrackId: subsonicTrackId,
       ext: ext,
-      intentId: intentId
+      intentId: intentId,
+      contentFingerprint: contentFingerprint
     )
     let task = session.downloadTask(with: url)
     if let data = try? JSONEncoder().encode(metadata),
@@ -166,6 +171,14 @@ public final class CassetteTransferSession: NSObject, @unchecked Sendable {
 // MARK: URLSessionDownloadDelegate
 
 extension CassetteTransferSession: URLSessionDownloadDelegate {
+  /// The computer's own certificate, checked against its key (CassetteHubTrust, BUG-879).
+  public func urlSession(
+    _ session: URLSession,
+    didReceive challenge: URLAuthenticationChallenge
+  ) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+    CassetteHubTrust.answer(challenge)
+  }
+
   public func urlSession(
     _ session: URLSession,
     downloadTask: URLSessionDownloadTask,
@@ -303,7 +316,8 @@ extension CassetteTransferSession: URLSessionDownloadDelegate {
             mbid: entry.meta.mbid,
             subsonicTrackId: entry.meta.subsonicTrackId,
             fileExtension: entry.meta.ext,
-            downloadedAt: entry.downloadedAt
+            downloadedAt: entry.downloadedAt,
+            contentFingerprint: entry.meta.contentFingerprint
           )
         })
       }

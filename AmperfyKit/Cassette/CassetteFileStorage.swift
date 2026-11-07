@@ -12,8 +12,9 @@
 //  download cache and never touches it. No Core Data, no networking — just
 //  the file system.
 //
-//  Files are left backup-eligible (no excludedFromBackup) so a user
-//  restoring from an iCloud backup gets their music back. Revisit later.
+//  The folder is kept out of the person's iCloud backup: the music comes back
+//  from their computer after a restore, and a whole library would fill a free
+//  iCloud plan (BUG-881).
 //
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -47,6 +48,12 @@ public final class CassetteFileStorage: Sendable {
       at: musicDirURL,
       withIntermediateDirectories: true
     )
+    // On the folder, which covers everything in it, and on every launch, so a phone that
+    // already has music stops backing it up too.
+    var excluded = URLResourceValues()
+    excluded.isExcludedFromBackup = true
+    var dir = musicDirURL
+    try? dir.setResourceValues(excluded)
   }
 
   public func musicDirectory() -> URL { musicDirURL }

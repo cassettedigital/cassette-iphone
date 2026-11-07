@@ -794,6 +794,8 @@ class MiniPlayerView: UIView {
 
   public func openPlayerView(completion: (() -> ())? = nil) {
     guard let hostVC = AppDelegate.mainWindowHostVC as? UIViewController else { return }
+    // covers a site page's playing preview, which stops (BUG-880)
+    NotificationCenter.default.post(name: CassetteWebPageVC.coveredNotification, object: nil)
     let popupPlayer = PopupPlayerVC()
     // Now Playing follows light or dark like the rest of the app: the cover's coloured room
     // seen through light glass or dark glass (the founder, 2026-11-01; it was held dark, I-T1).

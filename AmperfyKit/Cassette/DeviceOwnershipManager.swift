@@ -87,18 +87,22 @@ public final class DeviceOwnershipManager {
     public let subsonicTrackId: String?
     public let fileExtension: String
     public let downloadedAt: Date
+    /// Set when this file replaced a changed song (BUG-882); nil leaves the stored one alone.
+    public let contentFingerprint: String?
     public init(
       cassetteLocalId: String,
       mbid: String?,
       subsonicTrackId: String?,
       fileExtension: String,
-      downloadedAt: Date
+      downloadedAt: Date,
+      contentFingerprint: String? = nil
     ) {
       self.cassetteLocalId = cassetteLocalId
       self.mbid = mbid
       self.subsonicTrackId = subsonicTrackId
       self.fileExtension = fileExtension
       self.downloadedAt = downloadedAt
+      self.contentFingerprint = contentFingerprint
     }
   }
 
@@ -123,6 +127,9 @@ public final class DeviceOwnershipManager {
             for: entry.cassetteLocalId,
             extension: entry.fileExtension
           )
+          if let fingerprint = entry.contentFingerprint {
+            ownership.contentFingerprint = fingerprint
+          }
         }
         try context.save() // one save for the whole batch
       } catch {

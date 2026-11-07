@@ -160,6 +160,8 @@ public final class IntentExecutor {
 
     isRunning = true
     defer { isRunning = false }
+    // https to the computer once the cloud has its key, http until then (BUG-879)
+    CassetteHubTrust.applyToActiveAccount()
     didRemoveThisCycle = false
     downloadsInFlightThisPass = false
     pendingAlbumAddsThisPass = 0
@@ -399,14 +401,19 @@ public final class IntentExecutor {
   ///   "changed" would force a one-time re-download of the entire library the
   ///   moment this feature ships.
   /// - A track whose STORED fingerprint differs from the manifest's is a real
-  ///   change: delete the local copy via the existing remove() path (file +
-  ///   ownership row, exactly what a normal removal does). This does NOT
-  ///   re-download immediately — the next full-inventory report naturally
-  ///   omits the now-missing track, the server's reconciler sees it's still
-  ///   DESIRED but no longer ACTUAL, and queues a normal add intent that a
-  ///   subsequent poll executes through the already-proven download path.
-  ///   Reusing that path (rather than hand-rolling a second one here) is the
-  ///   whole safety argument for this feature.
+  ///   change, and the phone keeps the copy it has until the new one lands
+  ///   (BUG-882). It used to delete first and wait for the cloud to queue the
+  ///   song again, so a retag on the computer (the hub's own MusicBrainz ID
+  ///   write included) emptied those songs off the phone, away from home too.
+  ///   Now: only when the computer answers, at most `trackRefreshesPerSweep`
+  ///   songs a pass, the new copy goes through the same background download as
+  ///   an add, replaces the file only once it is complete, and stamps the new
+  ///   fingerprint as it lands. A failed download leaves the old song playing
+  ///   and the next sweep tries again.
+  /// - Two fingerprints of different kinds (a scheme before a colon, none on
+  ///   today's) aren't a change either: the computer changed how it
+  ///   fingerprints, not the song, so the phone adopts the new one silently
+  ///   rather than downloading the whole library again.
   private func sweepTrackFreshnessIfDue() async {
     if let last = lastTrackFreshnessSweepAt,
        Date().timeIntervalSince(last) < Self.trackFreshnessMinInterval {
@@ -424,35 +431,67 @@ public final class IntentExecutor {
     lastTrackFreshnessSweepAt = Date()
 
     let manager = DeviceOwnershipManager(context: AmperKit.shared.storage.main.context)
-    var adopted = 0, staleRemoved = 0
+    var adopted = 0
+    var changed: [(entry: CassetteTrackFreshnessEntry, version: String, mbid: String?, ext: String)] = []
     for entry in manifest.tracks {
       guard let manifestVersion = entry.audioVersion else { continue } // UNKNOWN — no signal yet
       guard let owned = try? manager.fetchOne(cassetteLocalId: entry.cassetteLocalId)
       else { continue } // not actually on this device, or the fetch failed — nothing to check
       let stored = owned.contentFingerprint
-      if stored == nil {
+      if stored == nil ||
+        Self.fingerprintScheme(stored ?? "") != Self.fingerprintScheme(manifestVersion) {
         try? manager.stampContentFingerprint(
           cassetteLocalId: entry.cassetteLocalId,
           fingerprint: manifestVersion
         )
         adopted += 1
       } else if stored != manifestVersion {
-        try? manager.remove(cassetteLocalId: entry.cassetteLocalId)
-        staleRemoved += 1
+        let ext = (owned.filePath as NSString).pathExtension
+        guard !ext.isEmpty else { continue }
+        changed.append((entry, manifestVersion, owned.mbid, ext))
       }
     }
-    if adopted > 0 || staleRemoved > 0 {
+
+    // Away from home, or with the computer asleep, nothing changes: the songs stay as they are.
+    var refreshing = 0
+    if !changed.isEmpty, await isCassettePlayerReachable(),
+       let accountInfo = AmperKit.shared.storage.settings.accounts.active {
+      let backendApi = AmperKit.shared.getMeta(accountInfo).backendApi
+      for change in changed.prefix(Self.trackRefreshesPerSweep) {
+        guard let url = try? await backendApi
+          .cassetteDownloadUrl(forSubsonicTrackId: change.entry.subsonicTrackId)
+        else { continue }
+        await transferSession.enqueueDownload(
+          url: url,
+          cassetteLocalId: change.entry.cassetteLocalId,
+          mbid: change.mbid,
+          subsonicTrackId: change.entry.subsonicTrackId,
+          fileExtension: change.ext,
+          intentId: "freshness-refresh",
+          contentFingerprint: change.version
+        )
+        refreshing += 1
+      }
+    }
+    if adopted > 0 || !changed.isEmpty {
       print(
-        "Cassette poll: track-freshness sweep — \(adopted) adopted, \(staleRemoved) stale (queued for re-fetch)"
+        "Cassette poll: track-freshness sweep — \(adopted) adopted, \(changed.count) changed, " +
+          "\(refreshing) refreshing (old copies kept until the new ones land)"
       )
-      if staleRemoved > 0 {
-        // A removal just happened outside the normal removal-intent path — same
-        // repaint the loop already does after didRemoveThisCycle, so a stale
-        // track disappears from the on-device-only library immediately rather
-        // than waiting for the next full poll's FRC rebuild.
-        await MainActor.run { CassetteOwnershipNotifier.shared.ownershipDidChangeNow() }
-      }
     }
+  }
+
+  /// How many changed songs one sweep sends for again (sweeps run at most every
+  /// five minutes), so a retag of a whole library comes across over a few hours
+  /// instead of all at once.
+  private static let trackRefreshesPerSweep = 50
+
+  /// The kind of a fingerprint: the part before a colon ("" for today's plain
+  /// ones), so the computer can change how it fingerprints without every phone
+  /// taking it as every song changed.
+  private static func fingerprintScheme(_ fingerprint: String) -> String {
+    guard let colon = fingerprint.firstIndex(of: ":") else { return "" }
+    return String(fingerprint[..<colon])
   }
 
   /// Apply the catalog-blind album grouping (Phase 1, Gap 1) the cloud returned
@@ -2144,7 +2183,8 @@ public final class IntentExecutor {
 
     let data: Data
     do {
-      let (downloaded, response) = try await URLSession.shared.data(for: urlRequest)
+      // from the computer, so through its key check (BUG-879)
+      let (downloaded, response) = try await CassetteHubTrust.session.data(for: urlRequest)
       guard let http = response as? HTTPURLResponse,
             (200 ..< 300).contains(http.statusCode), !downloaded.isEmpty
       else { return false }
@@ -2247,8 +2287,9 @@ public final class IntentExecutor {
   /// A quick GET to the active account's LAN server with a 5s timeout. Any
   /// HTTP response means reachable; only network errors / timeouts mean not.
   private func isCassettePlayerReachable() async -> Bool {
+    // the address in use (https once the computer's key is known), not the login's own
     guard let serverUrl = AmperKit.shared.storage.settings.accounts.activeSetting.read
-      .loginCredentials?.serverUrl,
+      .loginCredentials?.activeBackendServerUrl,
       let url = URL(string: serverUrl)
     else { return false }
 
@@ -2259,7 +2300,8 @@ public final class IntentExecutor {
     let config = URLSessionConfiguration.ephemeral
     config.timeoutIntervalForRequest = 5
     config.waitsForConnectivity = false
-    let session = URLSession(configuration: config)
+    let session = URLSession(configuration: config, delegate: CassetteHubTrust.Delegate(), delegateQueue: nil)
+    defer { session.finishTasksAndInvalidate() }
 
     do {
       let (_, response) = try await session.data(for: request)

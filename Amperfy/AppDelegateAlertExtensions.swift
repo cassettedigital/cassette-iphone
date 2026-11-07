@@ -86,6 +86,9 @@ extension AppDelegate {
   /// (CassetteWebPageVC) forget their website session. Before this, "Log Out" showed the sign-in screen
   /// while the phone stayed signed in underneath, and the next sign-in re-paired without asking.
   private func forgetCassetteSignIn() {
+    if let token = storage.settings.cassetteBearerToken {
+      Task { await CassetteSyncAPI.revokeSignIn(token) }
+    }
     storage.settings.cassetteBearerToken = nil
     CassetteSyncAPI.forgetAccount()
     RadioSaved.shared.forget()

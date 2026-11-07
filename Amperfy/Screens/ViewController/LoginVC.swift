@@ -215,7 +215,7 @@ class LoginVC: UIViewController {
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         let msg: String
         if code == 404 {
-          msg = "No computer found on your account. Open Cassette on your computer and finish setting it up first."
+          msg = "There's no computer on your account yet. Get Cassette for your computer at cassette.digital/apps, sign in there, then sign in here."
         } else {
           msg = "Couldn't find your computer. Try again."
         }
@@ -235,14 +235,21 @@ class LoginVC: UIViewController {
         return
       }
 
-      // 3-param init computes passwordHash via SHA-256 internally
+      // 3-param init computes passwordHash via SHA-256 internally. The login keeps the http
+      // address as its own (the library is filed under it); the address in use is https when
+      // the cloud has the computer's key (CassetteHubTrust, BUG-879).
       let serverUrl = "http://\(lanHostname):\(lanPort)"
-      let credentials = LoginCredentials(
+      CassetteHubTrust.recordPin(
+        (json["lanTlsPin"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+        host: lanHostname
+      )
+      var credentials = LoginCredentials(
         serverUrl: serverUrl,
         username: subsonicUsername,
         password: subsonicPassword,
         backendApi: .subsonic
       )
+      credentials.activeBackendServerUrl = CassetteHubTrust.activeAddress(for: serverUrl)
 
       DispatchQueue.main.async {
         // Cassette fork — Layer 3: the bearer token authenticated against
@@ -263,6 +270,18 @@ class LoginVC: UIViewController {
     }.resume()
   }
 
+  /// Whether the computer answers on this network within a few seconds. Any reply counts; only
+  /// no reply at all means it can't be reached from here right now.
+  private static func computerAnswers(_ serverUrl: String) async -> Bool {
+    guard let url = URL(string: serverUrl) else { return false }
+    let config = URLSessionConfiguration.ephemeral
+    config.timeoutIntervalForRequest = 4
+    config.waitsForConnectivity = false
+    let session = URLSession(configuration: config, delegate: CassetteHubTrust.Delegate(), delegateQueue: nil)
+    defer { session.finishTasksAndInvalidate() }
+    return (try? await session.data(from: url).1) is HTTPURLResponse
+  }
+
   /// Patch 014 — programmatically authenticate and navigate into the app.
   /// Mirrors the core of login() but starts from pre-built credentials
   /// returned by /api/player/me instead of the manual form fields.
@@ -273,10 +292,26 @@ class LoginVC: UIViewController {
     Task { @MainActor in
       do {
         let meta = self.appDelegate.getMeta(accountInfo)
-        let authenticatedApiType = try await meta.backendApi.login(
-          apiType: .subsonic,
-          credentials: mutableCredentials
-        )
+        // The computer only has to answer for its login to be checked, not for the phone to sign
+        // in (BUG-876). Away from home, asleep, or with the Local Network question still on screen,
+        // the login the cloud handed over is taken as it is: Home, Radio and previews need no
+        // computer, the first library read on this phone needs none either, and the music comes
+        // across the next time the phone reaches it.
+        let authenticatedApiType: BackenApiType
+        if await Self.computerAnswers(credentials.activeBackendServerUrl) {
+          do {
+            authenticatedApiType = try await meta.backendApi.login(
+              apiType: .subsonic,
+              credentials: mutableCredentials
+            )
+          } catch AuthenticationError.downloadError, AuthenticationError.requestStatusError {
+            // It answered, but not at the address the login check reads (the computer's
+            // gateway only passes the music server's own paths): its login stands as handed over.
+            authenticatedApiType = .subsonic
+          }
+        } else {
+          authenticatedApiType = .subsonic
+        }
         mutableCredentials.backendApi = authenticatedApiType
         accountInfo = Account.createInfo(credentials: mutableCredentials)
         meta.backendApi.selectedApi = authenticatedApiType
@@ -1003,7 +1038,10 @@ private final class CassetteAuthPreservingDelegate: NSObject, URLSessionTaskDele
     completionHandler: @escaping (URLRequest?) -> ()
   ) {
     var req = newRequest
-    if let auth = task.originalRequest?.value(forHTTPHeaderField: "Authorization") {
+    // Only onto Cassette's own hosts over https (BUG-878).
+    if let auth = task.originalRequest?.value(forHTTPHeaderField: "Authorization"),
+       let url = newRequest.url, url.scheme == "https",
+       ["cassette.digital", "www.cassette.digital"].contains(url.host?.lowercased() ?? "") {
       req.setValue(auth, forHTTPHeaderField: "Authorization")
     }
     completionHandler(req)

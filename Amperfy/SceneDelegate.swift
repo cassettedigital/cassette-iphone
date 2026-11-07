@@ -280,12 +280,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     #endif
 
     let alert = UIAlertController(
-      title: "Device removed",
-      message: "This device was removed from your Cassette account, so syncing has stopped. Reconnect to keep syncing music from your library.",
+      title: "Signed out",
+      message: "This phone isn't signed in to Cassette anymore: it was signed out from your account, or went unused for 90 days. Sign in again to keep your music syncing.",
       preferredStyle: .alert
     )
     alert.addAction(UIAlertAction(title: "Not now", style: .cancel))
-    alert.addAction(UIAlertAction(title: "Reconnect", style: .default) { [weak self] _ in
+    alert.addAction(UIAlertAction(title: "Sign In", style: .default) { [weak self] _ in
       guard let self else { return }
       let reauth = CassetteTokenReauth()
       cassetteReauth = reauth

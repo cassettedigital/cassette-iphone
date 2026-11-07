@@ -330,7 +330,12 @@ public final class BackendProxy: Sendable {
 
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(), Error>) in
       let sessionConfig = URLSessionConfiguration.default
-      let session = URLSession(configuration: sessionConfig)
+      // cassette: the computer's own certificate is checked against its key (BUG-879)
+      let session = URLSession(
+        configuration: sessionConfig,
+        delegate: CassetteHubTrust.Delegate(),
+        delegateQueue: nil
+      )
       let request = URLRequest(url: activeBackendServerUrl)
       let task = session.downloadTask(with: request) { tempLocalUrl, response, error in
         if let error = error {

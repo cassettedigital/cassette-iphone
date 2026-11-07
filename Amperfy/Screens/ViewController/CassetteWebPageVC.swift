@@ -51,6 +51,11 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
 
   private static let siteHosts: Set<String> = ["cassette.digital", "www.cassette.digital"]
 
+  /// Posted when a screen opens over everything (the full player), which hides a playing
+  /// preview's video without the page itself going away. YouTube's rule is that its video is
+  /// seen while it plays, so the preview stops (BUG-880).
+  static let coveredNotification = Notification.Name("CassetteWebPageCovered")
+
   private let path: String
   private let placeholder: UIImage?
   private let webView: WKWebView
@@ -154,6 +159,20 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
       name: UIApplication.willResignActiveNotification,
       object: nil
     )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(Self.hushPreview),
+      name: Self.coveredNotification,
+      object: nil
+    )
+    // The phone's own screen going away while the app stays active (locked with CarPlay
+    // showing Cassette) doesn't resign the app, so the page's own scene is watched too.
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(Self.sceneWillDeactivate(_:)),
+      name: UIScene.willDeactivateNotification,
+      object: nil
+    )
 
     loadSignedIn()
   }
@@ -230,10 +249,35 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
     return parts?.percentEncodedQuery.map { "\(path)?\($0)" } ?? path
   }
 
-  /// Stops the page's preview: leaving the page, locking the phone, the phone's music starting.
+  /// Stops the page's preview: leaving the page, locking the phone, the phone's music starting,
+  /// the full player opening over it.
   @objc
   private func hushPreview() {
     webView.pauseAllMediaPlayback(completionHandler: nil)
+  }
+
+  @objc
+  private func sceneWillDeactivate(_ note: Notification) {
+    guard let scene = note.object as? UIWindowScene, scene === view.window?.windowScene else { return }
+    hushPreview()
+  }
+
+  /// Only the page itself, on Cassette's own site, speaks to the app. WebKit hands the message
+  /// channel to every frame, YouTube's player included, which could otherwise push screens or
+  /// pause the person's music (BUG-880).
+  fileprivate static func speaksForSite(_ frame: WKFrameInfo) -> Bool {
+    guard frame.isMainFrame else { return false }
+    let origin = frame.securityOrigin
+    #if !DEBUG
+      guard origin.protocol == "https" else { return false }
+    #endif
+    return isSite(URL(string: "\(origin.protocol)://\(origin.host)"))
+  }
+
+  /// YouTube's own player, which a preview plays in a frame of the page.
+  private static func isYouTubeFrame(_ url: URL?) -> Bool {
+    guard let url, url.scheme == "https", let host = url.host()?.lowercased() else { return false }
+    return host == "youtube.com" || host.hasSuffix(".youtube.com") || host == "www.youtube-nocookie.com"
   }
 
   // MARK: MusicPlayable
@@ -299,6 +343,11 @@ final class CassetteWebPageVC: UIViewController, WKNavigationDelegate, WKUIDeleg
         return .cancel
       }
       return .allow
+    }
+    // A frame inside the page: YouTube's player plays there, in the app; any other site's frame
+    // is refused quietly, never handed to Safari without a tap (BUG-880).
+    if let frame = navigationAction.targetFrame, !frame.isMainFrame {
+      return Self.isYouTubeFrame(url) ? .allow : .cancel
     }
     // Another site (a station's home page, a store, checkout): Safari.
     if let url, ["http", "https", "mailto", "tel"].contains(url.scheme ?? "") {
@@ -405,6 +454,7 @@ private final class PageMessages: NSObject, WKScriptMessageHandler {
     _ userContentController: WKUserContentController,
     didReceive message: WKScriptMessage
   ) {
+    guard CassetteWebPageVC.speaksForSite(message.frameInfo) else { return }
     page?.pageSaid(message.body)
   }
 }

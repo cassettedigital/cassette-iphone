@@ -991,7 +991,7 @@ final class SubsonicServerApi: URLCleanser, Sendable {
 
   private func request(url: URL) async throws -> APIDataResponse {
     try await withUnsafeThrowingContinuation { continuation in
-      let afRequest = AF.request(url, method: .get) { urlRequest in
+      let afRequest = Self.hubSession.request(url, method: .get) { urlRequest in
         // A1: fail fast rather than inheriting the 60s OS default.
         urlRequest.timeoutInterval = Self.requestTimeoutSeconds
       }
@@ -1019,6 +1019,33 @@ final class SubsonicServerApi: URLCleanser, Sendable {
         }
         fatalError("should not get here")
       }
+    }
+  }
+}
+
+// MARK: - The computer's key check (cassette, BUG-879)
+
+extension SubsonicServerApi {
+  /// Alamofire's default session plus the computer's key check: its certificate is its own,
+  /// checked against the key the cloud handed over (CassetteHubTrust); every other host keeps
+  /// Alamofire's usual checks.
+  nonisolated(unsafe) fileprivate static let hubSession = Session(serverTrustManager: CassetteHubTrustManager())
+}
+
+private final class CassetteHubTrustManager: ServerTrustManager, @unchecked Sendable {
+  init() {
+    super.init(allHostsMustBeEvaluated: false, evaluators: [:])
+  }
+
+  override func serverTrustEvaluator(forHost host: String) throws -> ServerTrustEvaluating? {
+    CassetteHubTrust.isComputer(host: host) ? CassetteHubKeyEvaluator() : nil
+  }
+}
+
+private struct CassetteHubKeyEvaluator: ServerTrustEvaluating {
+  func evaluate(_ trust: SecTrust, forHost host: String) throws {
+    guard let pin = CassetteHubTrust.pin, CassetteHubTrust.keyPin(of: trust) == pin else {
+      throw AFError.serverTrustEvaluationFailed(reason: .noRequiredEvaluator(host: host))
     }
   }
 }
