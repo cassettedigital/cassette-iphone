@@ -196,9 +196,7 @@ final class ComputerCardModel {
   }
 
   private func makeContent(_ facts: ComputerCardFacts) -> ComputerCard.Content? {
-    #if DEBUG
-      if let forced = debugContent() { return forced }
-    #endif
+    if let forced = previewContent() { return forced }
     guard let phase = facts.phase() else { return nil }
     let serverUrl = delegate.storage.settings.accounts.activeSetting.read.loginCredentials?.serverUrl
     let name = CassetteSyncStatus.displayHubName(serverUrl: serverUrl) ?? CassetteSyncStatus.fallbackHubName
@@ -295,62 +293,64 @@ final class ComputerCardModel {
     }
   }
 
-  // MARK: Checking the states (DEBUG)
+  // MARK: Checking the states
 
-  #if DEBUG
-    /// `defaults write <bundle id> cassette.debug.computerCard <phase>` draws that state;
-    /// `tour` walks every state, 6 s each. Covers are the phone's own, else plain swatches.
-    @ObservationIgnored
-    private var tourStartedAt = Date()
-    @ObservationIgnored
-    private var tourTimer: Timer?
+  /// Launched with `-cassette.debug.computerCard <phase>` the card draws that state; with
+  /// `tour` it walks every state, 6 s each. Covers are the phone's own, else plain swatches.
+  /// Read from the launch arguments only, never a stored setting: only a launch from Xcode,
+  /// simctl or devicectl shows it, and the next ordinary launch is the real Home.
+  static let previewKey = "cassette.debug.computerCard"
 
-    private func debugContent() -> ComputerCard.Content? {
-      guard let forced = UserDefaults.standard.string(forKey: "cassette.debug.computerCard"),
-            !forced.isEmpty else { return nil }
-      let phase: ComputerCard.Phase
-      var tick = 0
-      if forced == "tour" {
-        if tourTimer == nil {
-          tourStartedAt = Date()
-          tourTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.recompute() }
-          }
+  @ObservationIgnored
+  private var tourStartedAt = Date()
+  @ObservationIgnored
+  private var tourTimer: Timer?
+
+  private func previewContent() -> ComputerCard.Content? {
+    let launch = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+    guard let forced = launch[Self.previewKey] as? String, !forced.isEmpty else { return nil }
+    let phase: ComputerCard.Phase
+    var tick = 0
+    if forced == "tour" {
+      if tourTimer == nil {
+        tourStartedAt = Date()
+        tourTimer = Timer.scheduledTimer(withTimeInterval: 6, repeats: true) { [weak self] _ in
+          MainActor.assumeIsolated { self?.recompute() }
         }
-        tick = Int(Date().timeIntervalSince(tourStartedAt) / 6)
-        let order: [ComputerCard.Phase] = [.gettingReady, .syncing, .outOfReach, .noMusic, .nothingChosen, .notSetUp]
-        phase = order[tick % order.count]
-      } else if let named = ComputerCard.Phase(rawValue: forced) {
-        phase = named
-      } else {
-        return nil
       }
-      var covers = phone?.covers ?? []
-      if covers.count < 8 { covers = Self.swatches }
-      let landed = min(covers.count, 5 + tick)
-      return ComputerCard.Content(
-        phase: phase,
-        label: phase == .notSetUp ? CassetteSyncStatus.fallbackHubName : "Michael's MacBook Pro",
-        onPhone: 5 + tick * 3,
-        total: 120,
-        covers: Array(covers.prefix(landed))
-      )
+      tick = Int(Date().timeIntervalSince(tourStartedAt) / 6)
+      let order: [ComputerCard.Phase] = [.gettingReady, .syncing, .outOfReach, .noMusic, .nothingChosen, .notSetUp]
+      phase = order[tick % order.count]
+    } else if let named = ComputerCard.Phase(rawValue: forced) {
+      phase = named
+    } else {
+      return nil
     }
+    var covers = phone?.covers ?? []
+    if covers.count < 8 { covers = Self.swatches }
+    let landed = min(covers.count, 5 + tick)
+    return ComputerCard.Content(
+      phase: phase,
+      label: phase == .notSetUp ? CassetteSyncStatus.fallbackHubName : "Michael's MacBook Pro",
+      onPhone: 5 + tick * 3,
+      total: 120,
+      covers: Array(covers.prefix(landed))
+    )
+  }
 
-    private static let swatches: [LibraryStrip.Cover] = {
-      let hues: [CGFloat] = [0.02, 0.08, 0.13, 0.55, 0.62, 0.33, 0.9, 0.75, 0.45, 0.18, 0.68, 0.05]
-      return hues.enumerated().map { index, hue in
-        let size = CGSize(width: 120, height: 120)
-        let image = UIGraphicsImageRenderer(size: size).image { context in
-          UIColor(hue: hue, saturation: 0.55, brightness: 0.72, alpha: 1).setFill()
-          context.fill(CGRect(origin: .zero, size: size))
-          UIColor(hue: hue, saturation: 0.7, brightness: 0.45, alpha: 1).setFill()
-          context.cgContext.fillEllipse(in: CGRect(x: 24, y: 24, width: 72, height: 72))
-        }
-        return LibraryStrip.Cover(id: "swatch-\(index)", image: image)
+  private static let swatches: [LibraryStrip.Cover] = {
+    let hues: [CGFloat] = [0.02, 0.08, 0.13, 0.55, 0.62, 0.33, 0.9, 0.75, 0.45, 0.18, 0.68, 0.05]
+    return hues.enumerated().map { index, hue in
+      let size = CGSize(width: 120, height: 120)
+      let image = UIGraphicsImageRenderer(size: size).image { context in
+        UIColor(hue: hue, saturation: 0.55, brightness: 0.72, alpha: 1).setFill()
+        context.fill(CGRect(origin: .zero, size: size))
+        UIColor(hue: hue, saturation: 0.7, brightness: 0.45, alpha: 1).setFill()
+        context.cgContext.fillEllipse(in: CGRect(x: 24, y: 24, width: 72, height: 72))
       }
-    }()
-  #endif
+      return LibraryStrip.Cover(id: "swatch-\(index)", image: image)
+    }
+  }()
 }
 
 /// One read of the phone, done off the main thread.
