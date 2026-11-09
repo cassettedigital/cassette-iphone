@@ -66,7 +66,6 @@ class LoginVC: UIViewController {
   // cassette Patch 013/014: Cassette account pairing
   // The "Sign in with Cassette" primary section is shown by default.
   // The existing manual login form is hidden behind "Use manual setup".
-  private static let cassetteApiBase = "https://cassette.digital"
   private var webAuthSession: ASWebAuthenticationSession?
 
   // "Sign in with Cassette" primary button (Patch 013)
@@ -130,25 +129,24 @@ class LoginVC: UIViewController {
 
   @IBAction
   func cassetteSignInPressed() {
-    guard let callbackScheme = URL(string: "cassette://")?.scheme else { return }
-    let redirectURI = "cassette://auth/callback"
-    let authURLString =
-      "\(Self.cassetteApiBase)/auth/player" +
-      "?redirect_uri=\(redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" +
-      "&client=cassette-ios"
-    guard let authURL = URL(string: authURLString) else { return }
+    // A fresh one-time code and key for this sheet only (BUG-878): the answer is taken only with
+    // this code, and a sealed one opens only with this key (CassetteSignIn.swift).
+    let request = CassetteSignInRequest()
+    guard let authURL = request.pairingURL else { return }
 
     cassetteSignInButton.isEnabled = false
     cassetteActivityIndicator.startAnimating()
 
     let session = ASWebAuthenticationSession(
       url: authURL,
-      callbackURLScheme: callbackScheme
+      callbackURLScheme: CassetteSignInRequest.callbackScheme
     ) { [weak self] callbackURL, error in
       guard let self else { return }
       DispatchQueue.main.async {
         self.cassetteSignInButton.isEnabled = true
         self.cassetteActivityIndicator.stopAnimating()
+        // The code and key were for this sheet; it has answered.
+        self.webAuthSession = nil
       }
       if let error {
         if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin { return }
@@ -157,24 +155,17 @@ class LoginVC: UIViewController {
         }
         return
       }
-      // Cancel on the pairing page comes back as error=cancelled (BUG-642): as quiet as the
-      // sheet's own Cancel.
-      if let url = callbackURL,
-         URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
-         .contains(where: { $0.name == "error" && $0.value == "cancelled" }) == true {
+      switch request.answer(to: callbackURL) {
+      case let .signIn(token):
+        fetchAndLoginWithCassetteToken(token)
+      case .cancelled:
+        // Cancel on the pairing page (BUG-642): as quiet as the sheet's own Cancel.
         return
-      }
-      guard let url = callbackURL,
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-            let tokenItem = components.queryItems?.first(where: { $0.name == "token" }),
-            let token = tokenItem.value, !token.isEmpty
-      else {
+      case .failed, .notOurs:
         DispatchQueue.main.async {
           self.showErrorMsg(message: "Couldn't get credentials from Cassette. Try again.")
         }
-        return
       }
-      fetchAndLoginWithCassetteToken(token)
     }
 
     session.presentationContextProvider = self

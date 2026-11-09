@@ -24,14 +24,13 @@
 //  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+import AmperfyKit
 import AuthenticationServices
 import UIKit
 
 // MARK: - CassetteTokenReauth
 
 final class CassetteTokenReauth: NSObject {
-  private static let cassetteApiBase = "https://cassette.digital"
-
   private var webAuthSession: ASWebAuthenticationSession?
   // Keep ourselves alive for the duration of the async web-auth flow.
   private var retainSelf: CassetteTokenReauth?
@@ -40,17 +39,9 @@ final class CassetteTokenReauth: NSObject {
   /// token (or nil on cancel/failure). The caller persists it and kicks off a
   /// sync. Verbose-but-temporary `print` logging mirrors the rest of Phase 3.1.
   func start(completion: @escaping (String?) -> ()) {
-    guard let callbackScheme = URL(string: "cassette://")?.scheme else {
-      print("Cassette re-link: bad callback scheme")
-      completion(nil)
-      return
-    }
-    let redirectURI = "cassette://auth/callback"
-    let authURLString =
-      "\(Self.cassetteApiBase)/auth/player" +
-      "?redirect_uri=\(redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" +
-      "&client=cassette-ios"
-    guard let authURL = URL(string: authURLString) else {
+    // A fresh one-time code and key for this sheet only (BUG-878), as LoginVC's sign-in.
+    let request = CassetteSignInRequest()
+    guard let authURL = request.pairingURL else {
       print("Cassette re-link: bad auth URL")
       completion(nil)
       return
@@ -61,9 +52,12 @@ final class CassetteTokenReauth: NSObject {
 
     let session = ASWebAuthenticationSession(
       url: authURL,
-      callbackURLScheme: callbackScheme
+      callbackURLScheme: CassetteSignInRequest.callbackScheme
     ) { [weak self] callbackURL, error in
-      defer { self?.retainSelf = nil }
+      defer {
+        self?.webAuthSession = nil
+        self?.retainSelf = nil
+      }
       if let error {
         if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
           print("Cassette re-link: cancelled by user")
@@ -73,12 +67,8 @@ final class CassetteTokenReauth: NSObject {
         completion(nil)
         return
       }
-      guard let url = callbackURL,
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-            let tokenItem = components.queryItems?.first(where: { $0.name == "token" }),
-            let token = tokenItem.value, !token.isEmpty
-      else {
-        print("Cassette re-link: no token in callback")
+      guard case let .signIn(token) = request.answer(to: callbackURL) else {
+        print("Cassette re-link: no sign-in for this request in the callback")
         completion(nil)
         return
       }
