@@ -37,6 +37,10 @@ public enum CassetteCloudPlaylistBridge {
     "cassette.cloudPlaylistItemIds." + playlistId
   }
 
+  nonisolated private static func pendingMovesKey(_ playlistId: String) -> String {
+    "cassette.cloudPlaylistPendingMoves." + playlistId
+  }
+
   nonisolated private static func coverUrlKey(_ playlistId: String) -> String {
     "cassette.cloudPlaylistCoverUrl." + playlistId
   }
@@ -94,14 +98,59 @@ public enum CassetteCloudPlaylistBridge {
   }
 
   /// A song was moved within a playlist on this phone (PlaylistDetailVC): move its cloud item id the same
-  /// way. The stored ids run beside the playlist's songs one for one, so `updateOrder` then sends the new
-  /// order; before this it sent the order from before the move, and the page, which reloads from the cloud
-  /// whenever it appears, put the song back (BUG-616).
+  /// way, and note that it moved. The stored ids run beside the playlist's songs one for one (BUG-616: the
+  /// page, which reloads from the cloud whenever it appears, put a moved song back), and `updateOrder` then
+  /// sends a new place for the moved song alone (BUG-887).
   public static func moveStoredItem(playlistId: String, from: Int, to: Int) {
     var ids = storedItemIds(for: playlistId)
     guard from >= 0, from < ids.count, to >= 0, to < ids.count, from != to else { return }
-    ids.insert(ids.remove(at: from), at: to)
+    let moved = ids.remove(at: from)
+    ids.insert(moved, at: to)
     storeItemIds(ids, for: playlistId)
+    var pending = UserDefaults.standard.stringArray(forKey: pendingMovesKey(playlistId)) ?? []
+    pending.removeAll { $0 == moved }
+    pending.append(moved)
+    UserDefaults.standard.set(pending, forKey: pendingMovesKey(playlistId))
+  }
+
+  /// The cloud spaces a playlist's places this far apart after every change (POSITION_STEP in
+  /// apps/cassette/src/lib/playlist-order.ts).
+  nonisolated static let cloudPositionStep: Double = 1024
+
+  /// The new place for a song moved on this phone, in the playlist's whole order, which also holds the
+  /// songs this phone doesn't have (BUG-887). `phoneOrder` is this phone's item ids after the move; `full`
+  /// is every item in the cloud, in playlist order. The song goes right after the phone song now above it
+  /// (or, moved to the top, right before the one below it), between that song and its neighbour in the
+  /// whole list, so every other song keeps its place on every device. nil when neither neighbour is in the
+  /// cloud's list, or there is no room between them.
+  nonisolated static func placeMoved(
+    _ moved: String,
+    phoneOrder: [String],
+    full: [(id: String, position: Double)]
+  )
+    -> Double? {
+    guard let i = phoneOrder.firstIndex(of: moved),
+          full.contains(where: { $0.id == moved }) else { return nil }
+    let rest = full.filter { $0.id != moved }
+    let at: Int
+    if i > 0, let above = rest.firstIndex(where: { $0.id == phoneOrder[i - 1] }) {
+      at = above + 1
+    } else if i + 1 < phoneOrder.count,
+              let below = rest.firstIndex(where: { $0.id == phoneOrder[i + 1] }) {
+      at = below
+    } else {
+      return nil
+    }
+    let lo = at > 0 ? rest[at - 1].position : nil
+    let hi = at < rest.count ? rest[at].position : nil
+    switch (lo, hi) {
+    case let (lo?, hi?):
+      let mid = (lo + hi) / 2
+      return mid > lo && mid < hi ? mid : nil
+    case let (lo?, nil): return lo + cloudPositionStep
+    case let (nil, hi?): return hi - cloudPositionStep
+    case (nil, nil): return nil
+    }
   }
 
   /// Absolute cover URL from the last cloud sync, if any.
@@ -560,25 +609,32 @@ public enum CassetteCloudPlaylistBridge {
       )
       ids.append(itemId)
     }
-    let updated = try await CassetteSyncAPI.shared.applyPlaylistOps(
+    _ = try await CassetteSyncAPI.shared.applyPlaylistOps(
       playlistId: playlist.id,
       ops: ops
     )
-    if let items = updated.items.map(CassetteCloudPlaylistItem.inPlaylistOrder) {
-      storeItemIds(items.map(\.id), for: playlist.id)
-    } else {
-      storeItemIds(ids, for: playlist.id)
-    }
+    // Beside this phone's songs one for one, the new ones last as the phone appends them: never the
+    // cloud's whole list, which also holds songs this phone doesn't have, so a later removal by index
+    // would take the wrong song (BUG-887).
+    storeItemIds(ids, for: playlist.id)
   }
 
   public static func deleteSong(playlist: Playlist, index: Int) async throws {
     guard isCloudAvailable, !playlist.id.isEmpty else { return }
     var ids = storedItemIds(for: playlist.id)
-    if index < 0 || index >= ids.count {
-      let remote = try await CassetteSyncAPI.shared.getPlaylist(id: playlist.id)
-      ids = CassetteCloudPlaylistItem.inPlaylistOrder(remote.items ?? []).map(\.id)
-      storeItemIds(ids, for: playlist.id)
-      guard index >= 0, index < ids.count else { return }
+    // The stored ids run beside this phone's songs one for one. Past their end they no longer line up,
+    // and the cloud's whole list (songs this phone doesn't have too) can't say which song this was: it
+    // used to be read by the phone's index and removed the wrong one (BUG-887). Nothing is removed; the
+    // next sync puts the cloud's list back on the phone.
+    guard index >= 0, index < ids.count else {
+      os_log(
+        "Cloud playlists: removal at %d with %d stored ids, not sent",
+        log: log,
+        type: .error,
+        index,
+        ids.count
+      )
+      return
     }
     let itemId = ids[index]
     _ = try await CassetteSyncAPI.shared.applyPlaylistOps(
@@ -589,21 +645,32 @@ public enum CassetteCloudPlaylistBridge {
     storeItemIds(ids, for: playlist.id)
   }
 
+  /// Sends the songs moved on this phone since the last send, each alone to its new place in the
+  /// playlist's whole order (placeMoved). It used to re-place every song this phone has at the end, so on
+  /// every device the songs it doesn't have jumped to the top (BUG-887).
   public static func updateOrder(playlist: Playlist) async throws {
     guard isCloudAvailable, !playlist.id.isEmpty else { return }
-    var ids = storedItemIds(for: playlist.id)
-    let playables = playlist.playables
-    if ids.count != playables.count {
-      let remote = try await CassetteSyncAPI.shared.getPlaylist(id: playlist.id)
-      ids = CassetteCloudPlaylistItem.inPlaylistOrder(remote.items ?? []).map(\.id)
+    let moved = UserDefaults.standard.stringArray(forKey: pendingMovesKey(playlist.id)) ?? []
+    UserDefaults.standard.removeObject(forKey: pendingMovesKey(playlist.id))
+    guard !moved.isEmpty else { return }
+    let ids = storedItemIds(for: playlist.id)
+    let remote = try await CassetteSyncAPI.shared.getPlaylist(id: playlist.id)
+    var full = CassetteCloudPlaylistItem.inPlaylistOrder(remote.items ?? []).map { (
+      id: $0.id,
+      position: $0.position
+    ) }
+    var ops: [CassettePlaylistOp] = []
+    for itemId in moved {
+      guard let position = placeMoved(itemId, phoneOrder: ids, full: full) else { continue }
+      full.removeAll { $0.id == itemId }
+      full.insert(
+        (id: itemId, position: position),
+        at: full.firstIndex { $0.position > position } ?? full.count
+      )
+      ops.append(.reorder(itemId: itemId, position: position))
     }
-    guard ids.count == playables.count, !ids.isEmpty else { return }
-    let base = Double(Date().timeIntervalSince1970 * 1000)
-    let ops: [CassettePlaylistOp] = ids.enumerated().map { i, itemId in
-      .reorder(itemId: itemId, position: base + Double(i))
-    }
+    guard !ops.isEmpty else { return }
     _ = try await CassetteSyncAPI.shared.applyPlaylistOps(playlistId: playlist.id, ops: ops)
-    storeItemIds(ids, for: playlist.id)
   }
 
   public static func deletePlaylist(id: String) async throws {
