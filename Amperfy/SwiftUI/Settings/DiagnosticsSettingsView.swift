@@ -78,7 +78,7 @@ struct DiagnosticsSettingsView: View {
 
         Section(
           footer: Text(
-            "When on, crash and hang reports upload automatically to help fix problems. They're anonymous: no account, name or email. Turn this off to keep everything on this device."
+            "When on, crash and hang reports upload automatically to help fix problems. When you're signed in, a report is tied to your account, and it can include the names of songs you played. Turn this off to keep crash reports on this device."
           )
         ) {
           Toggle("Automatically send crash reports", isOn: $autoUploadEnabled)
