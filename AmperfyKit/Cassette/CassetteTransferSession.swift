@@ -65,6 +65,34 @@ public final class CassetteTransferSession: NSObject, @unchecked Sendable {
   // In-memory guard against double-enqueueing the same track within a run.
   private let inFlightLock = NSLock()
   private var inFlightLocalIds = Set<String>()
+  /// Room set aside for each download in flight, by track (BUG-883); guarded by `inFlightLock`.
+  private var budgeted: [String: Int64] = [:]
+
+  // MARK: Room on this phone (BUG-883)
+
+  /// Kept free for the phone itself: music never fills it past this (the same 1 GB floor as Android's
+  /// CassetteSyncEngine).
+  static let reserveBytes: Int64 = 1_073_741_824
+  /// One song's room before it arrives (the phone is never told file sizes): CD quality, 176,400 bytes a
+  /// second, more than any compressed copy takes, so a nearly full phone stops early rather than late.
+  /// A song of unknown length counts as five minutes.
+  static func budget(seconds: Int?) -> Int64 {
+    Int64(max(seconds ?? 300, 1)) * 176_400
+  }
+
+  /// Free space as iOS offers it for things a person asked for; nil when it can't be read.
+  static func freeBytes() -> Int64? {
+    let home = URL(fileURLWithPath: NSHomeDirectory())
+    return (try? home.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+      .volumeAvailableCapacityForImportantUsage
+  }
+
+  /// Whether one more song of `budget` bytes fits, after the room set aside for those in flight and the
+  /// reserve. Free space that can't be read never blocks a download.
+  static func fits(budget: Int64, free: Int64?, alreadyBudgeted: Int64) -> Bool {
+    guard let free else { return true }
+    return free - alreadyBudgeted - reserveBytes >= budget
+  }
 
   // cassette: batch the post-download ownership write + inventory report. Each
   // finished file appends here; a debounced flush records all ownership rows in
@@ -100,7 +128,10 @@ public final class CassetteTransferSession: NSObject, @unchecked Sendable {
   // MARK: - Enqueue
 
   /// Enqueue a background download. No-op if the same track is already
-  /// in-flight (including tasks restored after a relaunch).
+  /// in-flight (including tasks restored after a relaunch). Returns false, and
+  /// downloads nothing, when the phone has no room for it past the reserve
+  /// (BUG-883): the album waits, and Home says the phone is full.
+  @discardableResult
   public func enqueueDownload(
     url: URL,
     cassetteLocalId: String,
@@ -108,11 +139,24 @@ public final class CassetteTransferSession: NSObject, @unchecked Sendable {
     subsonicTrackId: String?,
     fileExtension ext: String,
     intentId: String,
+    durationSeconds: Int? = nil,
     contentFingerprint: String? = nil
-  ) async {
+  ) async -> Bool {
     // Skip if a task for this track already exists.
-    if await isAlreadyInFlight(cassetteLocalId: cassetteLocalId) { return }
-    guard markInFlight(cassetteLocalId) else { return }
+    if await isAlreadyInFlight(cassetteLocalId: cassetteLocalId) { return true }
+    let need = Self.budget(seconds: durationSeconds)
+    let free = Self.freeBytes()
+    let room: Bool = inFlightLock.withLock {
+      guard Self.fits(budget: need, free: free, alreadyBudgeted: budgeted.values.reduce(0, +)) else { return false }
+      budgeted[cassetteLocalId] = need
+      return true
+    }
+    CassetteSyncStatus.setPhoneFull(!room)
+    guard room else {
+      os_log("no room for %{public}@: the phone is full", log: self.log, type: .info, cassetteLocalId)
+      return false
+    }
+    guard markInFlight(cassetteLocalId) else { return true }
 
     let metadata = CassetteTransferMetadata(
       cassetteLocalId: cassetteLocalId,
@@ -130,6 +174,7 @@ public final class CassetteTransferSession: NSObject, @unchecked Sendable {
     task.resume()
     print("Cassette transfer: enqueued background download for \(cassetteLocalId) (.\(ext))")
     os_log("enqueued download for %{public}@", log: self.log, type: .info, cassetteLocalId)
+    return true
   }
 
   private func markInFlight(_ cassetteLocalId: String) -> Bool {
@@ -214,6 +259,8 @@ extension CassetteTransferSession: URLSessionDownloadDelegate {
         meta.cassetteLocalId,
         error.localizedDescription
       )
+      // The file arrived and there was nowhere to put it: say so rather than fetch it again and again.
+      if (error as NSError).code == NSFileWriteOutOfSpaceError { CassetteSyncStatus.setPhoneFull(true) }
       clearInFlight(meta.cassetteLocalId)
       return
     }
@@ -375,6 +422,7 @@ extension CassetteTransferSession: URLSessionDownloadDelegate {
   private func clearInFlight(_ cassetteLocalId: String) {
     inFlightLock.lock()
     inFlightLocalIds.remove(cassetteLocalId)
+    budgeted.removeValue(forKey: cassetteLocalId)
     inFlightLock.unlock()
   }
 }

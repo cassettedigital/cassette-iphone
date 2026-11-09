@@ -1727,14 +1727,16 @@ public final class IntentExecutor {
       do {
         let url = try await backendApi
           .cassetteDownloadUrl(forSubsonicTrackId: track.subsonicTrackId)
-        await transferSession.enqueueDownload(
+        // No room past the reserve (BUG-883): the album waits as it is, and Home says the phone is full.
+        guard await transferSession.enqueueDownload(
           url: url,
           cassetteLocalId: track.cassetteLocalId,
           mbid: track.mbid,
           subsonicTrackId: track.subsonicTrackId,
           fileExtension: track.fileExtension,
-          intentId: intent.id
-        )
+          intentId: intent.id,
+          durationSeconds: track.duration
+        ) else { break }
         enqueued += 1
         print("Cassette poll: intent \(intent.id) - enqueued download for \(track.cassetteLocalId)")
       } catch {

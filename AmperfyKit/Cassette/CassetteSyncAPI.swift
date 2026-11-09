@@ -86,6 +86,17 @@ public enum CassetteSyncStatus {
   public private(set) static var waveTotal = 0
   /// False when the last pass had albums to pull and the hub did not answer.
   public private(set) static var isHubReachable = true
+  /// True when the last download asked for had no room on this phone past its reserve (BUG-883).
+  public private(set) static var isPhoneFull = false
+
+  /// Set by the download queue each time it asks for a song; posts only on a change.
+  nonisolated public static func setPhoneFull(_ full: Bool) {
+    Task { @MainActor in
+      guard full != isPhoneFull else { return }
+      isPhoneFull = full
+      NotificationCenter.default.post(name: .cassetteSyncActiveChanged, object: nil)
+    }
+  }
 
   /// Called at the end of each intent pass with whether real sync work remains.
   /// Posts `.cassetteSyncActiveChanged` only on a real transition, so observers
@@ -112,9 +123,13 @@ public enum CassetteSyncStatus {
   /// - Arriving: "Syncing 3 of 12 albums from Michael's MacBook Pro"
   /// - Hub out of reach with albums waiting: "Can't reach Michael's MacBook Pro · new music
   ///   arrives when it's back"
+  /// - No room for the albums waiting: "This phone is full · new music waits until there's room"
   public static func statusLine(hubName: String?) -> String? {
     let inSentence = fallbackHubName.prefix(1).lowercased() + fallbackHubName.dropFirst()
     let hub = hubName ?? inSentence
+    if pendingAlbums > 0, isPhoneFull {
+      return "This phone is full · new music waits until there's room"
+    }
     if pendingAlbums > 0, !isHubReachable {
       return "Can't reach \(hub) · new music arrives when it's back"
     }

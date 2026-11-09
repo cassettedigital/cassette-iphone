@@ -594,6 +594,7 @@
 		CA55E0EB0000001A0000CAFE /* AlbumRegrouperTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55E0EB0000000A0000CAFE /* AlbumRegrouperTest.swift */; };
 		CA55E0EC0000001A0000CAFE /* ImageLadderTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55E0EC0000000A0000CAFE /* ImageLadderTest.swift */; };
 		CA55E0ED0000001A0000CAFE /* CloudPlaylistPlaceTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55E0ED0000000A0000CAFE /* CloudPlaylistPlaceTest.swift */; };
+		CA55E0EE0000001A0000CAFE /* PhoneRoomTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55E0EE0000000A0000CAFE /* PhoneRoomTest.swift */; };
 		CA55F014000000120000CAFE /* CassetteSignInTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55F014000000020000CAFE /* CassetteSignInTest.swift */; };
 		CA55F011000000110000CAFE /* BarlowCondensed-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CA55F011000000010000CAFE /* BarlowCondensed-Regular.ttf */; };
 		CA55F011000000120000CAFE /* BarlowCondensed-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = CA55F011000000020000CAFE /* BarlowCondensed-SemiBold.ttf */; };
@@ -1296,6 +1297,7 @@
 		CA55E0EB0000000A0000CAFE /* AlbumRegrouperTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cases/Cassette/AlbumRegrouperTest.swift; sourceTree = "<group>"; };
 		CA55E0EC0000000A0000CAFE /* ImageLadderTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cases/Cassette/ImageLadderTest.swift; sourceTree = "<group>"; };
 		CA55E0ED0000000A0000CAFE /* CloudPlaylistPlaceTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cases/Cassette/CloudPlaylistPlaceTest.swift; sourceTree = "<group>"; };
+		CA55E0EE0000000A0000CAFE /* PhoneRoomTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cases/Cassette/PhoneRoomTest.swift; sourceTree = "<group>"; };
 		CA55F014000000020000CAFE /* CassetteSignInTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cases/Cassette/CassetteSignInTest.swift; sourceTree = "<group>"; };
 		CA55F011000000010000CAFE /* BarlowCondensed-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-Regular.ttf"; sourceTree = "<group>"; };
 		CA55F011000000020000CAFE /* BarlowCondensed-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "BarlowCondensed-SemiBold.ttf"; sourceTree = "<group>"; };
@@ -2115,6 +2117,7 @@
 				CA55E0EB0000000A0000CAFE /* AlbumRegrouperTest.swift */,
 				CA55E0EC0000000A0000CAFE /* ImageLadderTest.swift */,
 				CA55E0ED0000000A0000CAFE /* CloudPlaylistPlaceTest.swift */,
+				CA55E0EE0000000A0000CAFE /* PhoneRoomTest.swift */,
 				CA55F014000000020000CAFE /* CassetteSignInTest.swift */,
 				50E6BCA223B8F22E005C1DDA /* Cases */,
 				50B798B023B7F4E900551E62 /* Helper */,
@@ -3223,6 +3226,7 @@
 				CA55E0EB0000001A0000CAFE /* AlbumRegrouperTest.swift in Sources */,
 				CA55E0EC0000001A0000CAFE /* ImageLadderTest.swift in Sources */,
 				CA55E0ED0000001A0000CAFE /* CloudPlaylistPlaceTest.swift in Sources */,
+				CA55E0EE0000001A0000CAFE /* PhoneRoomTest.swift in Sources */,
 				CA55F014000000120000CAFE /* CassetteSignInTest.swift in Sources */,
 				50BE5D4D2850F4C900156FC6 /* ArtworkTest.swift in Sources */,
 				50BE5D932850F51E00156FC6 /* CoreDataSeeder.swift in Sources */,
