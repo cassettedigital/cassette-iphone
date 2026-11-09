@@ -403,6 +403,15 @@ class BackendAudioPlayer: NSObject {
   }
 
   private func restartPlayer() {
+    // cassette (BUG-746): stop the old player before letting it go. After a stream error AudioStreaming only marks
+    // itself as errored (raiseUnexpected), its pause() does nothing outside .running, and its deinit frees the
+    // renderer's buffers without stopping the engine, so the engine kept rendering from freed memory: the SIGBUS on
+    // the audio render thread (AudioPlayerRenderProcessor, a garbage mNumberBuffers). Its delegate is cut first so
+    // the stop's finish callback can't move the queue on.
+    if let old = player {
+      old.delegate = nil
+      old.stop()
+    }
     player = nil
     initAudioStreamingPlayerAndNodes()
   }
