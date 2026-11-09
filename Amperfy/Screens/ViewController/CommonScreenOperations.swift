@@ -194,8 +194,9 @@ extension UIViewController {
   /// never runs, and without a network the Mac cannot be reached. A tap opens Settings.
   private func cassetteWhoAction() -> UIAction {
     let name = CassetteSyncAPI.accountName ?? CassetteSyncAPI.accountEmail ?? "You"
-    let serverUrl = appDelegate.storage.settings.accounts.activeSetting.read
-      .loginCredentials?.serverUrl
+    let serverUrl = CassetteSyncStatus.pairedServerUrl(
+      appDelegate.storage.settings.accounts.activeSetting.read.loginCredentials?.serverUrl
+    )
     let canSync = CassetteSyncAPI.bearerToken != nil
       && appDelegate.networkMonitor.isConnectedToNetwork
     let state = CassetteSyncStatus.macState(isPaired: serverUrl != nil, canSync: canSync)

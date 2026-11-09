@@ -161,6 +161,22 @@ struct AccountSettingsView: View {
               appDelegate.presentLogoutChoice(for: activeAccountInfo)
             }
           }
+
+          // BUG-884: deleting the account starts here and happens on the website's Account
+          // page, opened in the app (Apple 5.1.1(v)). Once it is gone, the phone's next call
+          // is refused and it says it was signed out.
+          if isCassetteAccount(activeAccountInfo) {
+            SettingsSection {
+              NavigationLink {
+                CassetteWebPage(path: "/settings", title: "Account")
+                  .ignoresSafeArea(edges: .bottom)
+              } label: {
+                Text("Delete Account")
+                  .font(.cassette(.rowTitle))
+                  .foregroundStyle(Color(uiColor: CoverTint.dangerText))
+              }
+            }
+          }
         } else {
           // Not signed in yet
           SettingsSection {

@@ -329,6 +329,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     AmperKit.shared.threadPerformanceMonitor.isInForeground = true
     // One Home: back at the front (or just opened), ask the cloud for Home again.
     Task { @MainActor in await HomeStore.shared.refresh() }
+    // Signed in before the account had a computer: back from setting it up, connect (BUG-899).
+    appDelegate.connectComputerIfReady()
   }
 
   func sceneDidEnterBackground(_ scene: UIScene) {

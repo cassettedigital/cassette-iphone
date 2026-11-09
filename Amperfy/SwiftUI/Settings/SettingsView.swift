@@ -184,7 +184,10 @@ struct SettingsView: View {
       if isCassetteHub {
         Section {
           HubRow(model: devices)
-          ResyncRow(model: devices)
+          // Nothing to rescan before the account has a computer (BUG-899).
+          if devices.macState != .notPaired {
+            ResyncRow(model: devices)
+          }
         } header: {
           SettingsHead(shout: "YOUR COMPUTER", answer: devices.macState.answer)
         }

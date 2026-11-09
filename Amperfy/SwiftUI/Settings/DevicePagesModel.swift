@@ -288,7 +288,7 @@ import UIKit
       let canSync = CassetteSyncAPI.bearerToken != nil
         && delegate.networkMonitor.isConnectedToNetwork
       macState = CassetteSyncStatus.macState(
-        isPaired: credentials?.serverUrl != nil,
+        isPaired: CassetteSyncStatus.pairedServerUrl(credentials?.serverUrl) != nil,
         canSync: canSync
       )
     }

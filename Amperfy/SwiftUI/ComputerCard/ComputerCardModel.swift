@@ -148,6 +148,7 @@ final class ComputerCardModel {
 
   func homeDisappeared() {
     isHomeVisible = false
+    watchForComputer(false)
   }
 
   /// Works the card out again from what is known now.
@@ -157,13 +158,38 @@ final class ComputerCardModel {
     let wasShown = content != nil
     if next != content { content = next }
     if facts.needsScope { askScopeIfDue() }
+    watchForComputer(isHomeVisible && facts.phase() == .notSetUp)
     if wasShown != (next != nil) { onShownChange?() }
+  }
+
+  @ObservationIgnored
+  private var computerWatch: Task<(), Never>?
+
+  /// Not set up and on screen: every few seconds the phone asks whether the account's computer
+  /// has signed in, so it connects while the person sets the computer up (BUG-899). The asking
+  /// itself is spaced and skipped once a computer is there (`AppDelegate.connectComputerIfReady`).
+  private func watchForComputer(_ on: Bool) {
+    guard on else {
+      computerWatch?.cancel()
+      computerWatch = nil
+      return
+    }
+    guard computerWatch == nil else { return }
+    computerWatch = Task { [weak self] in
+      while !Task.isCancelled {
+        guard let self else { return }
+        delegate.connectComputerIfReady()
+        try? await Task.sleep(for: .seconds(12))
+      }
+    }
   }
 
   // MARK: Facts
 
   private func currentFacts() -> ComputerCardFacts {
-    let serverUrl = delegate.storage.settings.accounts.activeSetting.read.loginCredentials?.serverUrl
+    let serverUrl = CassetteSyncStatus.pairedServerUrl(
+      delegate.storage.settings.accounts.activeSetting.read.loginCredentials?.serverUrl
+    )
     let canSync = CassetteSyncAPI.bearerToken != nil && delegate.networkMonitor.isConnectedToNetwork
     let state = CassetteSyncStatus.macState(isPaired: serverUrl != nil, canSync: canSync)
     let summary = CassetteSyncAPI.cachedMacSummary

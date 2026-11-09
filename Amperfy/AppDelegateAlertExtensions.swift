@@ -206,6 +206,110 @@ extension AppDelegate {
   }
 }
 
+// MARK: - A computer for a phone that signed in without one (BUG-876, BUG-899)
+
+extension AppDelegate {
+  private static var computerCheckInFlight = false
+  private static var lastComputerCheckAt: Date?
+
+  /// A phone signed in before its account had a computer: ask the cloud whether one has
+  /// signed in since and, when it has, connect to it on its own. Called every few seconds
+  /// while Home shows "Not set up" and whenever the app comes back to the front; at most one
+  /// question every 10 seconds, and never for a phone that has its computer.
+  func connectComputerIfReady() {
+    let accounts = storage.settings.accounts
+    guard let standIn = accounts.active,
+          CassetteSyncStatus.isNoComputer(serverUrl: accounts.activeSetting.read.loginCredentials?.serverUrl),
+          !Self.computerCheckInFlight
+    else { return }
+    if let last = Self.lastComputerCheckAt, Date().timeIntervalSince(last) < 10 { return }
+    #if DEBUG
+      let debugComputer = Self.debugComputerCredentials()
+    #else
+      let debugComputer: LoginCredentials? = nil
+    #endif
+    let token = storage.settings.cassetteBearerToken
+    guard token != nil || debugComputer != nil else { return }
+    Self.computerCheckInFlight = true
+    Self.lastComputerCheckAt = Date()
+    Task { @MainActor in
+      defer { Self.computerCheckInFlight = false }
+      let answer: CassetteComputerLogin.Answer
+      if let debugComputer {
+        answer = .computer(debugComputer)
+      } else {
+        answer = await CassetteComputerLogin.fetch(token: token ?? "")
+      }
+      guard case let .computer(credentials) = answer,
+            // Signed out or switched meanwhile: leave it.
+            storage.settings.accounts.active == standIn
+      else { return }
+      await connectComputer(credentials, replacing: standIn)
+    }
+  }
+
+  /// The sign-in's last step (LoginVC.loginWithCredentials) for the computer that just
+  /// arrived, then the stand-in goes, and the phone reads the computer's library as after
+  /// sign-in. Nothing of the person's lives in the stand-in: no computer ever filled it, the
+  /// music on the phone belongs to the phone rather than to a login, and playlists, likes and
+  /// listens are in the cloud. The Cassette sign-in itself stays.
+  private func connectComputer(_ handedOver: LoginCredentials, replacing standIn: AccountInfo) async {
+    var credentials = handedOver
+    var accountInfo = Account.createInfo(credentials: credentials)
+    let meta = getMeta(accountInfo)
+    guard let apiType = try? await CassetteComputerLogin.authenticate(credentials, meta: meta),
+          storage.settings.accounts.active == standIn
+    else { return } // asked again next time
+    credentials.backendApi = apiType
+    accountInfo = Account.createInfo(credentials: credentials)
+    meta.backendApi.selectedApi = apiType
+    meta.account.assignInfo(info: accountInfo)
+    storage.main.saveContext()
+
+    // The stand-in, taken down the way Sign out takes an account down, minus the sign-in.
+    closeAllButActiveMainTabs()
+    stopForInit()
+    let standInMeta = getMeta(standIn)
+    standInMeta.stopManager()
+    resetMeta(standIn)
+    player.logout(account: storage.main.library.getAccount(info: standIn))
+    storage.settings.accounts.logout(standIn)
+
+    storage.settings.accounts.login(credentials)
+    meta.backendApi.provideCredentials(credentials: credentials)
+    notificationHandler.post(name: .accountDeleted, object: nil, userInfo: nil)
+    notificationHandler.post(name: .accountAdded, object: nil, userInfo: nil)
+    notificationHandler.post(name: .accountActiveChanged, object: nil, userInfo: nil)
+    AmperfyAppShortcuts.updateAppShortcutParameters()
+    quickActionsManager.configureQuickActions()
+    configureMainMenu()
+    DiagnosticLog.shared.log(.lifecycle, "computer arrived: stand-in sign-in replaced")
+
+    AppDelegate.mainSceneDelegate?.replaceMainRootViewController(
+      vc: AppStoryboard.Main.segueToSync(account: meta.account)
+    )
+  }
+
+  #if DEBUG
+    /// Simulator check only: `-cassette.debug.computerAppears "<address>|<user>|<password>"`
+    /// stands in for the cloud's answer once a computer has signed in.
+    private static func debugComputerCredentials() -> LoginCredentials? {
+      let launch = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+      guard let raw = launch["cassette.debug.computerAppears"] as? String else { return nil }
+      let parts = raw.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+      guard parts.count == 3 else { return nil }
+      var credentials = LoginCredentials(
+        serverUrl: parts[0],
+        username: parts[1],
+        password: parts[2],
+        backendApi: .subsonic
+      )
+      credentials.activeBackendServerUrl = parts[0]
+      return credentials
+    }
+  #endif
+}
+
 // MARK: - AppDelegate + AlertDisplayable
 
 extension AppDelegate: AlertDisplayable {

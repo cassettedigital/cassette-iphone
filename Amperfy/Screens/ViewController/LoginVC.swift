@@ -185,101 +185,40 @@ class LoginVC: UIViewController {
 
   /// Patch 014 — fetch /api/player/me and auto-configure Amperfy account.
   private func fetchAndLoginWithCassetteToken(_ token: String) {
-    guard let url = URL(string: "\(Self.cassetteApiBase)/api/player/me") else { return }
-    var request = URLRequest(url: url)
-    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    request.timeoutInterval = 15
-
-    // Use a dedicated ephemeral session with CassetteAuthPreservingDelegate so that
-    // the Authorization header survives any HTTP redirect Vercel may issue before
-    // the route handler runs. URLSession.shared drops Authorization on redirect.
-    let cassetteSession = URLSession(
-      configuration: .ephemeral,
-      delegate: CassetteAuthPreservingDelegate(),
-      delegateQueue: nil
-    )
-    cassetteSession.dataTask(with: request) { [weak self] data, response, error in
+    Task { @MainActor [weak self] in
+      let answer = await CassetteComputerLogin.fetch(token: token)
       guard let self else { return }
-
-      if let error {
-        DispatchQueue.main.async {
-          self
-            .showErrorMsg(message: "Couldn't reach Cassette. Check your connection and try again.")
-        }
-        return
+      switch answer {
+      case let .failed(message):
+        showErrorMsg(message: message)
+      case .none:
+        // No computer on the account yet: in anyway (BUG-876, BUG-899). Home leads with "Not
+        // set up" and its way to the computer app, and the phone connects on its own once the
+        // computer signs in (AppDelegate.connectComputerIfReady).
+        signIn(token: token, credentials: CassetteComputerLogin.noComputerCredentials())
+      case let .computer(credentials):
+        signIn(token: token, credentials: credentials)
       }
-      guard let httpResponse = response as? HTTPURLResponse,
-            let data,
-            httpResponse.statusCode == 200
-      else {
-        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        let msg: String
-        if code == 404 {
-          msg = "There's no computer on your account yet. Get Cassette for your computer at cassette.digital/apps, sign in there, then sign in here."
-        } else {
-          msg = "Couldn't find your computer. Try again."
-        }
-        DispatchQueue.main.async { self.showErrorMsg(message: msg) }
-        return
-      }
-
-      guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let lanHostname = json["lanHostname"] as? String,
-            let lanPort = json["lanPort"] as? Int,
-            let subsonicUsername = json["subsonicUsername"] as? String,
-            let subsonicPassword = json["subsonicPassword"] as? String
-      else {
-        DispatchQueue.main.async {
-          self.showErrorMsg(message: "Unexpected response from Cassette. Try again.")
-        }
-        return
-      }
-
-      // 3-param init computes passwordHash via SHA-256 internally. The login keeps the http
-      // address as its own (the library is filed under it); the address in use is https when
-      // the cloud has the computer's key (CassetteHubTrust, BUG-879).
-      let serverUrl = "http://\(lanHostname):\(lanPort)"
-      CassetteHubTrust.recordPin(
-        (json["lanTlsPin"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-        host: lanHostname
-      )
-      var credentials = LoginCredentials(
-        serverUrl: serverUrl,
-        username: subsonicUsername,
-        password: subsonicPassword,
-        backendApi: .subsonic
-      )
-      credentials.activeBackendServerUrl = CassetteHubTrust.activeAddress(for: serverUrl)
-
-      DispatchQueue.main.async {
-        // Cassette fork — Layer 3: the bearer token authenticated against
-        // /api/player/me, so it's valid. Persist it for the sync layer
-        // (/api/sync/*), which runs long after this login flow ends.
-        self.appDelegate.storage.settings.cassetteBearerToken = token
-        // Register this phone in the first-class device registry so it shows
-        // on the dashboard immediately — independent of any download. Also
-        // fetch the account identity (name/email) so the account menu leads
-        // with the user's Cassette account from the first launch, not the
-        // paired Player's hostname. Both best-effort; the poll loop retries.
-        Task {
-          try? await CassetteSyncAPI.shared.registerDevice()
-          try? await CassetteSyncAPI.shared.getAccount()
-        }
-        self.loginWithCredentials(credentials)
-      }
-    }.resume()
+    }
   }
 
-  /// Whether the computer answers on this network within a few seconds. Any reply counts; only
-  /// no reply at all means it can't be reached from here right now.
-  private static func computerAnswers(_ serverUrl: String) async -> Bool {
-    guard let url = URL(string: serverUrl) else { return false }
-    let config = URLSessionConfiguration.ephemeral
-    config.timeoutIntervalForRequest = 4
-    config.waitsForConnectivity = false
-    let session = URLSession(configuration: config, delegate: CassetteHubTrust.Delegate(), delegateQueue: nil)
-    defer { session.finishTasksAndInvalidate() }
-    return (try? await session.data(from: url).1) is HTTPURLResponse
+  private func signIn(token: String?, credentials: LoginCredentials) {
+    // Cassette fork — Layer 3: the bearer token authenticated against
+    // /api/player/me, so it's valid. Persist it for the sync layer
+    // (/api/sync/*), which runs long after this login flow ends.
+    if let token {
+      appDelegate.storage.settings.cassetteBearerToken = token
+      // Register this phone in the first-class device registry so it shows
+      // on the dashboard immediately — independent of any download. Also
+      // fetch the account identity (name/email) so the account menu leads
+      // with the user's Cassette account from the first launch, not the
+      // paired Player's hostname. Both best-effort; the poll loop retries.
+      Task {
+        try? await CassetteSyncAPI.shared.registerDevice()
+        try? await CassetteSyncAPI.shared.getAccount()
+      }
+    }
+    loginWithCredentials(credentials)
   }
 
   /// Patch 014 — programmatically authenticate and navigate into the app.
@@ -292,26 +231,10 @@ class LoginVC: UIViewController {
     Task { @MainActor in
       do {
         let meta = self.appDelegate.getMeta(accountInfo)
-        // The computer only has to answer for its login to be checked, not for the phone to sign
-        // in (BUG-876). Away from home, asleep, or with the Local Network question still on screen,
-        // the login the cloud handed over is taken as it is: Home, Radio and previews need no
-        // computer, the first library read on this phone needs none either, and the music comes
-        // across the next time the phone reaches it.
-        let authenticatedApiType: BackenApiType
-        if await Self.computerAnswers(credentials.activeBackendServerUrl) {
-          do {
-            authenticatedApiType = try await meta.backendApi.login(
-              apiType: .subsonic,
-              credentials: mutableCredentials
-            )
-          } catch AuthenticationError.downloadError, AuthenticationError.requestStatusError {
-            // It answered, but not at the address the login check reads (the computer's
-            // gateway only passes the music server's own paths): its login stands as handed over.
-            authenticatedApiType = .subsonic
-          }
-        } else {
-          authenticatedApiType = .subsonic
-        }
+        let authenticatedApiType = try await CassetteComputerLogin.authenticate(
+          mutableCredentials,
+          meta: meta
+        )
         mutableCredentials.backendApi = authenticatedApiType
         accountInfo = Account.createInfo(credentials: mutableCredentials)
         meta.backendApi.selectedApi = authenticatedApiType
@@ -1008,6 +931,19 @@ class LoginVC: UIViewController {
     closeButton.isHidden = !isModal
   }
 
+  #if DEBUG
+    /// Simulator check only: `-cassette.debug.signIn noComputer` signs in the way an account
+    /// with no computer does (the stand-in login, no Cassette token), without the web sheet.
+    override func viewDidAppear(_ animated: Bool) {
+      super.viewDidAppear(animated)
+      let launch = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+      guard launch["cassette.debug.signIn"] as? String == "noComputer",
+            appDelegate.storage.settings.accounts.active == nil
+      else { return }
+      signIn(token: nil, credentials: CassetteComputerLogin.noComputerCredentials())
+    }
+  #endif
+
   func updateApiSelectorText() {
     apiSelectorButton.setTitle("\(selectedApiType.selectorDescription)", for: .normal)
   }
@@ -1045,5 +981,129 @@ private final class CassetteAuthPreservingDelegate: NSObject, URLSessionTaskDele
       req.setValue(auth, forHTTPHeaderField: "Authorization")
     }
     completionHandler(req)
+  }
+}
+
+// MARK: - CassetteComputerLogin
+
+/// The account's computer as the cloud knows it (`GET /api/player/me`), and the login check, shared
+/// by the sign-in and by a phone that signed in before its account had a computer (BUG-876,
+/// BUG-899: `AppDelegate.connectComputerIfReady`).
+enum CassetteComputerLogin {
+  enum Answer {
+    /// The computer's login, ready to sign in with.
+    case computer(LoginCredentials)
+    /// The account has no computer yet.
+    case none
+    /// Anything else, with what to tell the person.
+    case failed(String)
+  }
+
+  static let apiBase = "https://cassette.digital"
+
+  /// Asks the cloud for the account's computer.
+  static func fetch(token: String) async -> Answer {
+    guard let url = URL(string: "\(apiBase)/api/player/me") else {
+      return .failed("Couldn't find your computer. Try again.")
+    }
+    var request = URLRequest(url: url)
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.timeoutInterval = 15
+
+    // A dedicated ephemeral session with CassetteAuthPreservingDelegate, so the Authorization
+    // header survives any redirect Vercel may issue before the route handler runs.
+    // URLSession.shared drops Authorization on redirect.
+    let session = URLSession(
+      configuration: .ephemeral,
+      delegate: CassetteAuthPreservingDelegate(),
+      delegateQueue: nil
+    )
+    defer { session.finishTasksAndInvalidate() }
+    let data: Data
+    let response: URLResponse
+    do {
+      (data, response) = try await session.data(for: request)
+    } catch {
+      return .failed("Couldn't reach Cassette. Check your connection and try again.")
+    }
+    let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+    if code == 404 { return .none }
+    guard code == 200 else { return .failed("Couldn't find your computer. Try again.") }
+
+    guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let lanHostname = json["lanHostname"] as? String,
+          let lanPort = json["lanPort"] as? Int,
+          let subsonicUsername = json["subsonicUsername"] as? String,
+          let subsonicPassword = json["subsonicPassword"] as? String
+    else {
+      return .failed("Unexpected response from Cassette. Try again.")
+    }
+
+    // 3-param init computes passwordHash via SHA-256 internally. The login keeps the http
+    // address as its own (the library is filed under it); the address in use is https when
+    // the cloud has the computer's key (CassetteHubTrust, BUG-879).
+    let serverUrl = "http://\(lanHostname):\(lanPort)"
+    CassetteHubTrust.recordPin(
+      (json["lanTlsPin"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+      host: lanHostname
+    )
+    var credentials = LoginCredentials(
+      serverUrl: serverUrl,
+      username: subsonicUsername,
+      password: subsonicPassword,
+      backendApi: .subsonic
+    )
+    credentials.activeBackendServerUrl = CassetteHubTrust.activeAddress(for: serverUrl)
+    return .computer(credentials)
+  }
+
+  /// The stand-in login for an account with no computer yet: an address that never resolves
+  /// (`CassetteSyncStatus.noComputerHost`), so Home reads "Not set up" until the computer
+  /// signs in and its real login takes over.
+  static func noComputerCredentials() -> LoginCredentials {
+    let serverUrl = "http://\(CassetteSyncStatus.noComputerHost):4533"
+    var credentials = LoginCredentials(
+      serverUrl: serverUrl,
+      // `cassette-`, like the logins pairing mints, so Settings treats it as Cassette's own
+      // (AccountSettingsView.isCassetteAccount) rather than a Subsonic server's.
+      username: "cassette-no-computer",
+      password: UUID().uuidString,
+      backendApi: .subsonic
+    )
+    credentials.activeBackendServerUrl = serverUrl
+    return credentials
+  }
+
+  /// The login check before signing in. The computer only has to answer for its login to be
+  /// checked, not for the phone to sign in (BUG-876): away from home, asleep, with the Local
+  /// Network question still on screen, or no computer yet, the login is taken as it is. Home,
+  /// Radio and previews need no computer, the first library read on this phone needs none
+  /// either, and the music comes across the next time the phone reaches it.
+  @MainActor
+  static func authenticate(
+    _ credentials: LoginCredentials,
+    meta: MetaManager
+  ) async throws -> BackenApiType {
+    if CassetteSyncStatus.isNoComputer(serverUrl: credentials.serverUrl) { return .subsonic }
+    guard await computerAnswers(credentials.activeBackendServerUrl) else { return .subsonic }
+    do {
+      return try await meta.backendApi.login(apiType: .subsonic, credentials: credentials)
+    } catch AuthenticationError.downloadError, AuthenticationError.requestStatusError {
+      // It answered, but not at the address the login check reads (the computer's gateway
+      // only passes the music server's own paths): its login stands as handed over.
+      return .subsonic
+    }
+  }
+
+  /// Whether the computer answers on this network within a few seconds. Any reply counts; only
+  /// no reply at all means it can't be reached from here right now.
+  private static func computerAnswers(_ serverUrl: String) async -> Bool {
+    guard let url = URL(string: serverUrl) else { return false }
+    let config = URLSessionConfiguration.ephemeral
+    config.timeoutIntervalForRequest = 4
+    config.waitsForConnectivity = false
+    let session = URLSession(configuration: config, delegate: CassetteHubTrust.Delegate(), delegateQueue: nil)
+    defer { session.finishTasksAndInvalidate() }
+    return (try? await session.data(from: url).1) is HTTPURLResponse
   }
 }

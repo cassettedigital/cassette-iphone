@@ -210,7 +210,27 @@ public enum CassetteSyncStatus {
   /// hub last reported to the cloud (a bare IP in the address carries no name). Every
   /// surface that names the hub reads this one, so Home and the avatar menu agree.
   public static func displayHubName(serverUrl: String?) -> String? {
-    hubName(serverUrl: serverUrl) ?? hubName(host: CassetteSyncAPI.cachedMacSummary?.mac?.lanHostname)
+    hubName(serverUrl: pairedServerUrl(serverUrl))
+      ?? hubName(host: CassetteSyncAPI.cachedMacSummary?.mac?.lanHostname)
+  }
+
+  /// The address a phone is signed in to while its account has no computer yet (BUG-876,
+  /// BUG-899). Anyone with a Cassette account gets in and lands on Home's "Not set up" card;
+  /// the name is reserved and never resolves, so any reach for a computer fails at once. When
+  /// the account's computer signs in, the phone swaps in that computer's login on its own
+  /// (`AppDelegate.connectComputerIfReady`).
+  public nonisolated static let noComputerHost = "no-computer.invalid"
+
+  /// Whether this sign-in is the stand-in for an account with no computer yet.
+  public nonisolated static func isNoComputer(serverUrl: String?) -> Bool {
+    guard let serverUrl, let host = URL(string: serverUrl)?.host else { return false }
+    return host == noComputerHost
+  }
+
+  /// The signed-in computer's address: nil when signed out or when the account has no
+  /// computer yet. Every "is there a computer" question reads this, never the raw address.
+  public nonisolated static func pairedServerUrl(_ serverUrl: String?) -> String? {
+    isNoComputer(serverUrl: serverUrl) ? nil : serverUrl
   }
 
   /// Whether the hub's name reads as a laptop ("MacBook", "laptop", "notebook").
