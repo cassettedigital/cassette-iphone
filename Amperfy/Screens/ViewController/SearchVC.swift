@@ -2247,7 +2247,9 @@ final class SearchArtistCircleCell: UICollectionViewCell {
 
 /// An artist, album or song from Cassette's catalog, from the site's name search
 /// (GET /api/search, apps/cassette/src/app/api/search/route.ts): the same ranking as the
-/// website's type-ahead, the famous name first.
+/// website's type-ahead, the famous name first. Pictures come only from the image ladder (each
+/// hit's `image`); a hit with none shows the empty square (BUG-964: the old `coverArtUrl` could
+/// send the phone to archive.org for a cover with no grid size).
 struct CatalogHit: Hashable, Sendable {
   enum Kind: Hashable, Sendable { case artist, album, song }
 
@@ -2257,6 +2259,7 @@ struct CatalogHit: Hashable, Sendable {
   let title: String
   let artistName: String
   let albumTitle: String?
+  /// The picture at the 48pt row's ladder rung, or nil with no ladder picture.
   let imageUrl: String?
   let artistSlug: String?
   let albumSlug: String?
@@ -2279,7 +2282,7 @@ struct CatalogHit: Hashable, Sendable {
       let id: String
       let name: String
       let slug: String?
-      let imageUrl: String?
+      let image: CassetteImageRef?
     }
 
     struct Album: Decodable {
@@ -2288,7 +2291,7 @@ struct CatalogHit: Hashable, Sendable {
       let slug: String?
       let artistName: String?
       let artistSlug: String?
-      let coverArtUrl: String?
+      let image: CassetteImageRef?
     }
 
     struct Song: Decodable {
@@ -2298,7 +2301,7 @@ struct CatalogHit: Hashable, Sendable {
       let artistSlug: String?
       let albumTitle: String?
       let albumSlug: String?
-      let coverArtUrl: String?
+      let image: CassetteImageRef?
     }
 
     let artists: [Artist]
@@ -2309,6 +2312,20 @@ struct CatalogHit: Hashable, Sendable {
   }
 
   private static let base = "https://www.cassette.digital"
+
+  /// The address of `ref` at the rung a 48pt row needs on this screen (the kit's one pick rule).
+  @MainActor
+  private static func rowUrl(_ ref: CassetteImageRef?) -> String? {
+    guard let ref else { return nil }
+    let scale = UITraitCollection.current.displayScale
+    let natural = [ref.w, ref.h].compactMap { $0 }.max()
+    let rung = CassetteKitTokens.Images.pickRung(
+      w: 48, h: 48, scale: Double(scale > 0 ? scale : 3),
+      aspect: ref.kind == "photo" ? CassetteKitTokens.Images.assumedPhotoAspect : CassetteKitTokens.Images.assumedCoverAspect,
+      natural: natural
+    )
+    return ref.url(rung: rung)
+  }
 
   /// The best few of each kind, in the site's order; empty on any failure.
   @MainActor
@@ -2325,19 +2342,19 @@ struct CatalogHit: Hashable, Sendable {
     let artists = payload.artists.prefix(artistLimit).map {
       CatalogHit(
         kind: .artist, id: "artist:\($0.id)", title: $0.name, artistName: $0.name, albumTitle: nil,
-        imageUrl: $0.imageUrl, artistSlug: $0.slug, albumSlug: nil
+        imageUrl: rowUrl($0.image), artistSlug: $0.slug, albumSlug: nil
       )
     }
     let albums = payload.albums.filter { $0.slug != nil }.prefix(albumLimit).map {
       CatalogHit(
         kind: .album, id: "album:\($0.id)", title: $0.title, artistName: $0.artistName ?? "",
-        albumTitle: $0.title, imageUrl: $0.coverArtUrl, artistSlug: $0.artistSlug, albumSlug: $0.slug
+        albumTitle: $0.title, imageUrl: rowUrl($0.image), artistSlug: $0.artistSlug, albumSlug: $0.slug
       )
     }
     let songs = payload.songs.filter { $0.albumSlug != nil }.prefix(songLimit).map {
       CatalogHit(
         kind: .song, id: "song:\($0.id)", title: $0.title, artistName: $0.artistName ?? "",
-        albumTitle: $0.albumTitle, imageUrl: $0.coverArtUrl, artistSlug: $0.artistSlug, albumSlug: $0.albumSlug
+        albumTitle: $0.albumTitle, imageUrl: rowUrl($0.image), artistSlug: $0.artistSlug, albumSlug: $0.albumSlug
       )
     }
     let groups: [String: [CatalogHit]] = ["artists": Array(artists), "albums": Array(albums), "songs": Array(songs)]
