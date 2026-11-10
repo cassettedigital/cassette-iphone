@@ -43,7 +43,9 @@ enum DetailHeroStyle {
 
 struct DetailHeaderConfiguration {
   var entityContainer: PlayableContainable
-  var rootView: UIViewController
+  /// Weak: the header sits in the page's own table, so a strong page here kept every
+  /// closed album, artist and podcast page in memory (BUG-447).
+  weak var rootView: UIViewController?
   var tableView: UITableView
   var playShuffleInfoConfig: PlayShuffleInfoConfiguration?
   var descriptionText: String?
@@ -497,7 +499,7 @@ class GenericDetailTableHeader: UIView {
     let header = GenericDetailTableHeader(frame: CGRect(
       x: 0,
       y: 0,
-      width: configuration.rootView.view.bounds.size.width,
+      width: configuration.rootView?.view.bounds.size.width ?? configuration.tableView.bounds.width,
       height: 1000 // corrected in viewDidLayoutSubviews once nav bar geometry is available
     ))
     header.prepare(configuration: configuration)
@@ -755,7 +757,7 @@ class GenericDetailTableHeader: UIView {
     }
     let tableWidth = config.tableView.bounds.width > 0
       ? config.tableView.bounds.width
-      : config.rootView.view.bounds.width
+      : config.rootView?.view.bounds.width ?? 0
     guard tableWidth > 0 else { return }
 
     // Determine the desired top clearance.
@@ -766,8 +768,8 @@ class GenericDetailTableHeader: UIView {
     // VC's viewDidLayoutSubviews will call us back with correct geometry.
     let topInset: CGFloat
     if config.extendsUnderNavigationBar {
-      let navBarMinY = config.rootView.navigationController?.navigationBar.frame.minY ?? 0
-      let safeTop = config.rootView.view.safeAreaInsets.top
+      let navBarMinY = config.rootView?.navigationController?.navigationBar.frame.minY ?? 0
+      let safeTop = config.rootView?.view.safeAreaInsets.top ?? 0
       guard navBarMinY > 0 || safeTop > 0 else { return }
       let statusBarH = navBarMinY > 0 ? navBarMinY : safeTop
       switch heroLayout {
@@ -825,7 +827,8 @@ class GenericDetailTableHeader: UIView {
     // the pushed VC is moving TO, not FROM, its parent. A cancelled pop
     // self-heals: viewIsAppearing recomputes the sticky-title alpha from the
     // preserved offset, and the next settled layout re-measures if needed.)
-    if config.rootView.isMovingFromParent || config.rootView.isBeingDismissed { return }
+    guard let rootView = config.rootView,
+          !rootView.isMovingFromParent, !rootView.isBeingDismissed else { return }
 
     lastLayoutWidth = tableWidth
     UIView.performWithoutAnimation {
@@ -1258,7 +1261,7 @@ class GenericDetailTableHeader: UIView {
           answerLine == nil,
           let artist = album.artist,
           let account = album.account,
-          let navController = config?.rootView.navigationController
+          let navController = config?.rootView?.navigationController
     else { return }
     appDelegate.userStatistics.usedAction(.alertGoToAlbum)
     navController.pushViewController(

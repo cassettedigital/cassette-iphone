@@ -49,8 +49,11 @@ class PlaylistAddArtistsVC: SingleSnapshotFetchedResultsTableViewController<Arti
 
   override func createDiffableDataSource() -> BasicUITableViewDiffableDataSource {
     let source =
-      ArtistDiffableDataSource(tableView: tableView) { tableView, indexPath, objectID -> UITableViewCell? in
-        guard let object = try? self.appDelegate.storage.main.context
+      ArtistDiffableDataSource(tableView: tableView) { [
+        weak self
+      ] tableView, indexPath, objectID -> UITableViewCell? in
+        guard let self else { return UITableViewCell() }
+        guard let object = try? appDelegate.storage.main.context
           .existingObject(with: objectID),
           let artistMO = object as? ArtistMO
         else {
@@ -59,7 +62,7 @@ class PlaylistAddArtistsVC: SingleSnapshotFetchedResultsTableViewController<Arti
         let artist = Artist(
           managedObject: artistMO
         )
-        return self.createCell(tableView, forRowAt: indexPath, artist: artist)
+        return createCell(tableView, forRowAt: indexPath, artist: artist)
       }
     return source
   }

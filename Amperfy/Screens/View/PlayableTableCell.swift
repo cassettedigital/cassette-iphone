@@ -259,7 +259,8 @@ class PlayableTableCell: BasicTableCell {
   var cassetteTapAction: (() -> ())?
   private var playable: AbstractPlayable?
   private var download: Download?
-  private var rootView: UIViewController?
+  /// Weak: a cell lives in its page, so a strong page here kept it in memory (BUG-447).
+  private weak var rootView: UIViewController?
   private var isDislayAlbumTrackNumberStyle: Bool = false
   private var hideArtistSubtitle = false
   /// Album/artist page primary — when set, subtitle is feat-aware vs this name.

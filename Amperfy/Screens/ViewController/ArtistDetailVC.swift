@@ -430,34 +430,37 @@ class ArtistDetailVC: MultiSourceTableViewController {
       detailOperationsView?.refreshArtistPhoto()
     }
 
-    containableAtIndexPathCallback = { indexPath in
+    containableAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
       switch BodySection(rawValue: indexPath.section) {
       case .mostPlayed:
-        return self.frozenMostPlayedSong(at: indexPath.row)
+        return frozenMostPlayedSong(at: indexPath.row)
       default:
         // The shelves are single carousel rows: no per-album swipe or menu.
         return nil
       }
     }
-    playContextAtIndexPathCallback = { indexPath in
+    playContextAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
       switch BodySection(rawValue: indexPath.section) {
       case .mostPlayed:
         let songIndexPath = IndexPath(row: indexPath.row, section: 0)
-        return self.convertIndexPathToPlayContext(songIndexPath: songIndexPath)
+        return convertIndexPathToPlayContext(songIndexPath: songIndexPath)
       default:
         // Shelf taps navigate (onSelect) or play (the tile's disc), not a play context.
         return nil
       }
     }
-    swipeCallback = { indexPath, completionHandler in
+    swipeCallback = { [weak self] indexPath, completionHandler in
+      guard let self else { return }
       switch BodySection(rawValue: indexPath.section) {
       case .mostPlayed:
-        guard let song = self.frozenMostPlayedSong(at: indexPath.row) else {
+        guard let song = frozenMostPlayedSong(at: indexPath.row) else {
           completionHandler(nil)
           return
         }
         let songIndexPath = IndexPath(row: indexPath.row, section: 0)
-        let playContext = self.convertIndexPathToPlayContext(songIndexPath: songIndexPath)
+        let playContext = convertIndexPathToPlayContext(songIndexPath: songIndexPath)
         completionHandler(SwipeActionContext(containable: song, playContext: playContext))
       default:
         // No swipe actions on the carousel rows.

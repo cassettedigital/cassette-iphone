@@ -59,8 +59,9 @@ class IndexesVC: SingleFetchedResultsTableViewController<DirectoryMO> {
     tableView.sectionHeaderHeight = 0.0
     tableView.estimatedSectionHeaderHeight = 0.0
     tableView.backgroundColor = .backgroundColor
-    resultUpdateHandler?.changesDidEnd = {
-      self.updateContentUnavailable()
+    resultUpdateHandler?.changesDidEnd = { [weak self] in
+      guard let self else { return }
+      updateContentUnavailable()
     }
   }
 

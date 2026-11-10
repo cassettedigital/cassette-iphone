@@ -71,18 +71,21 @@ class PlaylistAddPlaylistsVC: SingleSnapshotFetchedResultsTableViewController<Pl
 
   override func createDiffableDataSource() -> BasicUITableViewDiffableDataSource {
     let source =
-      PlaylistAddPlaylistsDiffableDataSource(tableView: tableView) { tableView, indexPath, objectID -> UITableViewCell? in
-        guard let object = try? self.appDelegate.storage.main.context
+      PlaylistAddPlaylistsDiffableDataSource(tableView: tableView) { [
+        weak self
+      ] tableView, indexPath, objectID -> UITableViewCell? in
+        guard let self else { return UITableViewCell() }
+        guard let object = try? appDelegate.storage.main.context
           .existingObject(with: objectID),
           let playlistMO = object as? PlaylistMO
         else {
           return UITableViewCell()
         }
         let playlist = Playlist(
-          library: self.appDelegate.storage.main.library,
+          library: appDelegate.storage.main.library,
           managedObject: playlistMO
         )
-        return self.createCell(tableView, forRowAt: indexPath, playlist: playlist)
+        return createCell(tableView, forRowAt: indexPath, playlist: playlist)
       }
     return source
   }

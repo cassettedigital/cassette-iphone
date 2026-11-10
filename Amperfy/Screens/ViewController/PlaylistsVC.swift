@@ -116,18 +116,21 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
 
   override func createDiffableDataSource() -> BasicUITableViewDiffableDataSource {
     let source =
-      PlaylistsDiffableDataSource(tableView: tableView) { tableView, indexPath, objectID -> UITableViewCell? in
-        guard let object = try? self.appDelegate.storage.main.context
+      PlaylistsDiffableDataSource(tableView: tableView) { [
+        weak self
+      ] tableView, indexPath, objectID -> UITableViewCell? in
+        guard let self else { return UITableViewCell() }
+        guard let object = try? appDelegate.storage.main.context
           .existingObject(with: objectID),
           let playlistMO = object as? PlaylistMO
         else {
           return UITableViewCell()
         }
         let playlist = Playlist(
-          library: self.appDelegate.storage.main.library,
+          library: appDelegate.storage.main.library,
           managedObject: playlistMO
         )
-        return self.createCell(tableView, forRowAt: indexPath, playlist: playlist)
+        return createCell(tableView, forRowAt: indexPath, playlist: playlist)
       }
     source.presenter = self
     return source
@@ -165,16 +168,19 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
       for: UIControl.Event.valueChanged
     )
 
-    containableAtIndexPathCallback = { indexPath in
-      self.playlistAt(indexPath: indexPath)
+    containableAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      return playlistAt(indexPath: indexPath)
     }
-    playContextAtIndexPathCallback = { indexPath in
-      guard let entity = self.playlistAt(indexPath: indexPath) else { return nil }
+    playContextAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      guard let entity = playlistAt(indexPath: indexPath) else { return nil }
       // phone-taste: only the playlist's songs on this phone (OneTapPlay).
       return PlayContext(containable: entity, index: 0, playables: OneTapPlay.playables(of: entity))
     }
-    swipeCallback = { indexPath, completionHandler in
-      guard let playlist = self.playlistAt(indexPath: indexPath) else { return }
+    swipeCallback = { [weak self] indexPath, completionHandler in
+      guard let self else { return }
+      guard let playlist = playlistAt(indexPath: indexPath) else { return }
       Task { @MainActor in
         do {
           try await playlist.fetch(
@@ -190,8 +196,9 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
         completionHandler(SwipeActionContext(containable: OnPhoneContainable(playlist)))
       }
     }
-    snapshotDidChange = {
-      self.updateContentUnavailable()
+    snapshotDidChange = { [weak self] in
+      guard let self else { return }
+      updateContentUnavailable()
     }
   }
 
@@ -318,10 +325,11 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
     let sortByName = UIAction(
       title: "Name",
       image: sortType == .name ? .check : nil,
-      handler: { _ in
-        self.change(sortType: .name)
-        self.updateSearchResults(for: self.searchController)
-        self.appDelegate.notificationHandler.post(
+      handler: { [weak self] _ in
+        guard let self else { return }
+        change(sortType: .name)
+        updateSearchResults(for: searchController)
+        appDelegate.notificationHandler.post(
           name: .fetchControllerSortChanged,
           object: nil,
           userInfo: nil
@@ -331,10 +339,11 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
     let sortByLastTimePlayed = UIAction(
       title: "Last time played",
       image: sortType == .lastPlayed ? .check : nil,
-      handler: { _ in
-        self.change(sortType: .lastPlayed)
-        self.updateSearchResults(for: self.searchController)
-        self.appDelegate.notificationHandler.post(
+      handler: { [weak self] _ in
+        guard let self else { return }
+        change(sortType: .lastPlayed)
+        updateSearchResults(for: searchController)
+        appDelegate.notificationHandler.post(
           name: .fetchControllerSortChanged,
           object: nil,
           userInfo: nil
@@ -344,10 +353,11 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
     let sortByChangeDate = UIAction(
       title: "Change date",
       image: sortType == .lastChanged ? .check : nil,
-      handler: { _ in
-        self.change(sortType: .lastChanged)
-        self.updateSearchResults(for: self.searchController)
-        self.appDelegate.notificationHandler.post(
+      handler: { [weak self] _ in
+        guard let self else { return }
+        change(sortType: .lastChanged)
+        updateSearchResults(for: searchController)
+        appDelegate.notificationHandler.post(
           name: .fetchControllerSortChanged,
           object: nil,
           userInfo: nil
@@ -357,10 +367,11 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
     let sortByDuration = UIAction(
       title: "Duration",
       image: sortType == .duration ? .check : nil,
-      handler: { _ in
-        self.change(sortType: .duration)
-        self.updateSearchResults(for: self.searchController)
-        self.appDelegate.notificationHandler.post(
+      handler: { [weak self] _ in
+        guard let self else { return }
+        change(sortType: .duration)
+        updateSearchResults(for: searchController)
+        appDelegate.notificationHandler.post(
           name: .fetchControllerSortChanged,
           object: nil,
           userInfo: nil
@@ -376,37 +387,42 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
   }
 
   private func createOptionsButtonMenu() -> UIMenu {
-    let fetchAllPlaylists = UIAction(title: "Sync All Playlists", image: .refresh, handler: { _ in
-      Task { @MainActor in do {
-        let accountObjectId = self.account.managedObject.objectID
-        let playlistsIds = try await self.appDelegate.storage.async
-          .performAndGet { asyncCompanion in
-            let accoundAsync = asyncCompanion.library.getAccount(managedObjectId: accountObjectId)
-            let playlists = asyncCompanion.library.getPlaylists(for: accoundAsync)
-            return playlists.compactMap { $0.managedObject.objectID }
+    let fetchAllPlaylists = UIAction(
+      title: "Sync All Playlists",
+      image: .refresh,
+      handler: { [weak self] _ in
+        guard let self else { return }
+        Task { @MainActor in do {
+          let accountObjectId = self.account.managedObject.objectID
+          let playlistsIds = try await self.appDelegate.storage.async
+            .performAndGet { asyncCompanion in
+              let accoundAsync = asyncCompanion.library.getAccount(managedObjectId: accountObjectId)
+              let playlists = asyncCompanion.library.getPlaylists(for: accoundAsync)
+              return playlists.compactMap { $0.managedObject.objectID }
+            }
+          for moId in playlistsIds {
+            let playlistMainMO = self.appDelegate.storage.main.context
+              .object(with: moId) as! PlaylistMO
+            let playlistMain = Playlist(
+              library: self.appDelegate.storage.main.library,
+              managedObject: playlistMainMO
+            )
+            try await playlistMain.fetch(
+              storage: self.appDelegate.storage,
+              librarySyncer: self.appDelegate.getMeta(self.account.info).librarySyncer,
+              playableDownloadManager: self.appDelegate.getMeta(self.account.info)
+                .playableDownloadManager
+            )
           }
-        for moId in playlistsIds {
-          let playlistMainMO = self.appDelegate.storage.main.context
-            .object(with: moId) as! PlaylistMO
-          let playlistMain = Playlist(
-            library: self.appDelegate.storage.main.library,
-            managedObject: playlistMainMO
+          self.appDelegate.eventLogger.info(
+            topic: "Sync All Playlists",
+            message: "All playlists have been synced."
           )
-          try await playlistMain.fetch(
-            storage: self.appDelegate.storage,
-            librarySyncer: self.appDelegate.getMeta(self.account.info).librarySyncer,
-            playableDownloadManager: self.appDelegate.getMeta(self.account.info)
-              .playableDownloadManager
-          )
-        }
-        self.appDelegate.eventLogger.info(
-          topic: "Sync All Playlists",
-          message: "All playlists have been synced."
-        )
-      } catch {
-        self.appDelegate.eventLogger.report(topic: "Sync All Playlists", error: error)
-      }}
-    })
+        } catch {
+          self.appDelegate.eventLogger.report(topic: "Sync All Playlists", error: error)
+        }}
+      }
+    )
     return UIMenu(
       title: "Options",
       image: .sort,

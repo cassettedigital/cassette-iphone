@@ -46,7 +46,8 @@ struct PlayShuffleInfoConfiguration {
   /// reads it to bind the Play/Pause CTA to this context (`isThisContextCurrent`).
   /// (Formerly also drove the action-bar heart — favorites feature removed.)
   var favoriteEntity: (any PlayableContainable)?
-  var rootViewController: UIViewController?
+  /// Weak, so the play bar never keeps its page alive (BUG-447).
+  weak var rootViewController: UIViewController?
 }
 
 // MARK: - LibraryElementDetailTableHeaderView

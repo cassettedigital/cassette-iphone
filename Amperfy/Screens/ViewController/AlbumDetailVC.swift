@@ -126,15 +126,18 @@ class AlbumDetailVC: SingleSnapshotFetchedResultsTableViewController<SongMO> {
 
   override func createDiffableDataSource() -> BasicUITableViewDiffableDataSource {
     let source =
-      AlbumDetailDiffableDataSource(tableView: tableView) { tableView, indexPath, objectID -> UITableViewCell? in
-        guard let object = try? self.appDelegate.storage.main.context
+      AlbumDetailDiffableDataSource(tableView: tableView) { [
+        weak self
+      ] tableView, indexPath, objectID -> UITableViewCell? in
+        guard let self else { return UITableViewCell() }
+        guard let object = try? appDelegate.storage.main.context
           .existingObject(with: objectID),
           let songMO = object as? SongMO
         else {
           fatalError("Managed object should be available")
         }
         let song = Song(managedObject: songMO)
-        return self.createCell(tableView, forRowAt: indexPath, song: song)
+        return createCell(tableView, forRowAt: indexPath, song: song)
       }
     return source
   }
@@ -234,13 +237,17 @@ class AlbumDetailVC: SingleSnapshotFetchedResultsTableViewController<SongMO> {
       self?.refreshAlbumMetadataLine()
     }
 
-    containableAtIndexPathCallback = { indexPath in
-      self.fetchedResultsController.getWrappedEntity(at: indexPath)
+    containableAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      return fetchedResultsController.getWrappedEntity(at: indexPath)
     }
-    playContextAtIndexPathCallback = convertIndexPathToPlayContext
-    swipeCallback = { indexPath, completionHandler in
-      let song = self.fetchedResultsController.getWrappedEntity(at: indexPath)
-      let playContext = self.convertIndexPathToPlayContext(songIndexPath: indexPath)
+    playContextAtIndexPathCallback = { [weak self] indexPath in
+      self?.convertIndexPathToPlayContext(songIndexPath: indexPath)
+    }
+    swipeCallback = { [weak self] indexPath, completionHandler in
+      guard let self else { return }
+      let song = fetchedResultsController.getWrappedEntity(at: indexPath)
+      let playContext = convertIndexPathToPlayContext(songIndexPath: indexPath)
       completionHandler(SwipeActionContext(containable: song, playContext: playContext))
     }
   }

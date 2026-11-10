@@ -43,15 +43,18 @@ class PlaylistAddAlbumDetailVC: SingleSnapshotFetchedResultsTableViewController<
 
   override func createDiffableDataSource() -> BasicUITableViewDiffableDataSource {
     let source =
-      AlbumDetailDiffableDataSource(tableView: tableView) { tableView, indexPath, objectID -> UITableViewCell? in
-        guard let object = try? self.appDelegate.storage.main.context
+      AlbumDetailDiffableDataSource(tableView: tableView) { [
+        weak self
+      ] tableView, indexPath, objectID -> UITableViewCell? in
+        guard let self else { return UITableViewCell() }
+        guard let object = try? appDelegate.storage.main.context
           .existingObject(with: objectID),
           let songMO = object as? SongMO
         else {
           fatalError("Managed object should be available")
         }
         let song = Song(managedObject: songMO)
-        return self.createCell(tableView, forRowAt: indexPath, song: song)
+        return createCell(tableView, forRowAt: indexPath, song: song)
       }
     return source
   }

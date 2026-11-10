@@ -54,15 +54,18 @@ class PlaylistAddAlbumsVC: SingleSnapshotFetchedResultsTableViewController<Album
 
   override func createDiffableDataSource() -> BasicUITableViewDiffableDataSource {
     let source =
-      AlbumsDiffableDataSource(tableView: tableView) { tableView, indexPath, objectID -> UITableViewCell? in
-        guard let object = try? self.appDelegate.storage.main.context
+      AlbumsDiffableDataSource(tableView: tableView) { [
+        weak self
+      ] tableView, indexPath, objectID -> UITableViewCell? in
+        guard let self else { return UITableViewCell() }
+        guard let object = try? appDelegate.storage.main.context
           .existingObject(with: objectID),
           let albumMO = object as? AlbumMO
         else {
           fatalError("Managed object should be available")
         }
         let album = Album(managedObject: albumMO)
-        return self.createCell(tableView, forRowAt: indexPath, album: album)
+        return createCell(tableView, forRowAt: indexPath, album: album)
       }
     return source
   }
@@ -74,19 +77,23 @@ class PlaylistAddAlbumsVC: SingleSnapshotFetchedResultsTableViewController<Album
     navigationItem.rightBarButtonItems = [doneButton]
 
     common.rootVC = self
-    common.isIndexTitelsHiddenCB = {
-      self.isIndexTitelsHidden = self.common.isIndexTitelsHidden
+    common.isIndexTitelsHiddenCB = { [weak self] in
+      guard let self else { return }
+      isIndexTitelsHidden = common.isIndexTitelsHidden
     }
-    common.reloadListViewCB = {
-      self.tableView.reloadData()
+    common.reloadListViewCB = { [weak self] in
+      guard let self else { return }
+      tableView.reloadData()
     }
-    common.updateSearchResultsCB = {
-      self.updateSearchResults(for: self.searchController)
+    common.updateSearchResultsCB = { [weak self] in
+      guard let self else { return }
+      updateSearchResults(for: searchController)
     }
-    common.updateFetchDataSourceCB = {
-      (self.diffableDataSource as? AlbumsDiffableDataSource)?.sortType = self.common.sortType
-      self.singleFetchedResultsController = self.common.fetchedResultsController
-      self.singleFetchedResultsController?.delegate = self
+    common.updateFetchDataSourceCB = { [weak self] in
+      guard let self else { return }
+      (diffableDataSource as? AlbumsDiffableDataSource)?.sortType = common.sortType
+      singleFetchedResultsController = common.fetchedResultsController
+      singleFetchedResultsController?.delegate = self
     }
 
     common.applyFilter()

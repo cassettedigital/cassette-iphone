@@ -65,28 +65,31 @@ class PodcastsVC: MultiSourceTableViewController {
     tableView.backgroundColor = .backgroundColor
 
     swipeDisplaySettings.playContextTypeOfElements = .podcast
-    containableAtIndexPathCallback = { indexPath in
-      switch self.showType {
+    containableAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      switch showType {
       case .podcasts:
-        return self.podcastsFetchedResultsController.getWrappedEntity(at: indexPath)
+        return podcastsFetchedResultsController.getWrappedEntity(at: indexPath)
       case .episodesSortedByReleaseDate:
-        return self.episodesFetchedResultsController.getWrappedEntity(at: indexPath)
+        return episodesFetchedResultsController.getWrappedEntity(at: indexPath)
       }
     }
-    playContextAtIndexPathCallback = { indexPath in
-      switch self.showType {
+    playContextAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      switch showType {
       case .podcasts:
-        let entity = self.podcastsFetchedResultsController.getWrappedEntity(at: indexPath)
+        let entity = podcastsFetchedResultsController.getWrappedEntity(at: indexPath)
         return PlayContext(containable: entity)
       case .episodesSortedByReleaseDate:
-        let entity = self.episodesFetchedResultsController.getWrappedEntity(at: indexPath)
+        let entity = episodesFetchedResultsController.getWrappedEntity(at: indexPath)
         return PlayContext(containable: entity)
       }
     }
-    swipeCallback = { indexPath, completionHandler in
-      switch self.showType {
+    swipeCallback = { [weak self] indexPath, completionHandler in
+      guard let self else { return }
+      switch showType {
       case .podcasts:
-        let podcast = self.podcastsFetchedResultsController.getWrappedEntity(at: indexPath)
+        let podcast = podcastsFetchedResultsController.getWrappedEntity(at: indexPath)
         Task { @MainActor in
           do {
             try await podcast.fetch(
@@ -106,15 +109,16 @@ class PodcastsVC: MultiSourceTableViewController {
           completionHandler(SwipeActionContext(containable: podcast))
         }
       case .episodesSortedByReleaseDate:
-        let episode = self.episodesFetchedResultsController.getWrappedEntity(at: indexPath)
+        let episode = episodesFetchedResultsController.getWrappedEntity(at: indexPath)
         completionHandler(SwipeActionContext(containable: episode))
       }
     }
 
     showType = appDelegate.storage.settings.user.podcastsShowSetting
 
-    resultUpdateHandler?.changesDidEnd = {
-      self.updateContentUnavailable()
+    resultUpdateHandler?.changesDidEnd = { [weak self] in
+      guard let self else { return }
+      updateContentUnavailable()
     }
   }
 
@@ -308,29 +312,31 @@ class PodcastsVC: MultiSourceTableViewController {
     let podcastsSortByName = UIAction(
       title: "Podcasts sorted by name",
       image: showType == .podcasts ? .check : nil,
-      handler: { _ in
-        self.showType = .podcasts
-        self.appDelegate.storage.settings.user.podcastsShowSetting = .podcasts
-        self.syncFromServer()
-        self.updateRightBarButtonItems()
-        self.episodesFetchedResultsController.delegate = nil
-        self.updateSearchResults(for: self.searchController)
-        self.podcastsFetchedResultsController.delegate = self
-        self.updateContentUnavailable()
+      handler: { [weak self] _ in
+        guard let self else { return }
+        showType = .podcasts
+        appDelegate.storage.settings.user.podcastsShowSetting = .podcasts
+        syncFromServer()
+        updateRightBarButtonItems()
+        episodesFetchedResultsController.delegate = nil
+        updateSearchResults(for: searchController)
+        podcastsFetchedResultsController.delegate = self
+        updateContentUnavailable()
       }
     )
     let episodesSortByReleaseDate = UIAction(
       title: "Episodes sorted by release date",
       image: showType == .episodesSortedByReleaseDate ? .check : nil,
-      handler: { _ in
-        self.showType = .episodesSortedByReleaseDate
-        self.appDelegate.storage.settings.user.podcastsShowSetting = .episodesSortedByReleaseDate
-        self.syncFromServer()
-        self.updateRightBarButtonItems()
-        self.podcastsFetchedResultsController.delegate = nil
-        self.updateSearchResults(for: self.searchController)
-        self.episodesFetchedResultsController.delegate = self
-        self.updateContentUnavailable()
+      handler: { [weak self] _ in
+        guard let self else { return }
+        showType = .episodesSortedByReleaseDate
+        appDelegate.storage.settings.user.podcastsShowSetting = .episodesSortedByReleaseDate
+        syncFromServer()
+        updateRightBarButtonItems()
+        podcastsFetchedResultsController.delegate = nil
+        updateSearchResults(for: searchController)
+        episodesFetchedResultsController.delegate = self
+        updateContentUnavailable()
       }
     )
     return UIMenu(children: [podcastsSortByName, episodesSortByReleaseDate])

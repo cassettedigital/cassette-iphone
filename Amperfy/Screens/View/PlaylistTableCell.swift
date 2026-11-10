@@ -33,7 +33,8 @@ class PlaylistTableCell: BasicTableCell {
   static let rowHeight: CGFloat = 70.0 + margin.bottom + margin.top
 
   private var playlist: Playlist?
-  private var rootView: UITableViewController?
+  /// Weak: a cell lives in its page, so a strong page here kept it in memory (BUG-447).
+  private weak var rootView: UITableViewController?
 
   override func awakeFromNib() {
     super.awakeFromNib()

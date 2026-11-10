@@ -481,7 +481,10 @@ public class CachedFetchedResultsController<ResultType>: BasicFetchedResultsCont
   private let searchFetchResulsController: CustomSectionIndexFetchedResultsController<ResultType>
   private var sectionIndexType: SectionIndexType
 
-  private var delegateInternal: NSFetchedResultsControllerDelegate?
+  /// Weak, like NSFetchedResultsController's own delegate: holding the page strongly kept
+  /// every closed list and detail page (and this controller, still reacting to every
+  /// library change) in memory for the life of the app (BUG-447).
+  private weak var delegateInternal: NSFetchedResultsControllerDelegate?
   override public var delegate: NSFetchedResultsControllerDelegate? {
     set {
       delegateInternal = newValue

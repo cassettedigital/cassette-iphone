@@ -49,7 +49,8 @@ class PodcastEpisodeTableCell: BasicTableCell {
   static let rowHeight: CGFloat = 143.0 + margin.bottom + margin.top
 
   private var episode: PodcastEpisode?
-  private var rootView: UIViewController?
+  /// Weak: a cell lives in its page, so a strong page here kept it in memory (BUG-447).
+  private weak var rootView: UIViewController?
   // cassette Patch 054 (Phase I): PlayIndicator overlay deleted. Currently-
   // playing episode is indicated by `configurePlayEpisodeButton` clearing
   // the play button image and disabling it (see below); no extra overlay.

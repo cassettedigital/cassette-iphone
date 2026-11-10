@@ -149,18 +149,21 @@ class PlaylistDetailVC: SingleSnapshotFetchedResultsTableViewController<Playlist
 
   override func createDiffableDataSource() -> BasicUITableViewDiffableDataSource {
     let source =
-      PlaylistDetailDiffableDataSource(tableView: tableView) { tableView, indexPath, objectID -> UITableViewCell? in
-        guard let object = try? self.appDelegate.storage.main.context
+      PlaylistDetailDiffableDataSource(tableView: tableView) { [
+        weak self
+      ] tableView, indexPath, objectID -> UITableViewCell? in
+        guard let self else { return UITableViewCell() }
+        guard let object = try? appDelegate.storage.main.context
           .existingObject(with: objectID),
           let playlistItemMO = object as? PlaylistItemMO
         else {
           return UITableViewCell()
         }
         let playlistItem = PlaylistItem(
-          library: self.appDelegate.storage.main.library,
+          library: appDelegate.storage.main.library,
           managedObject: playlistItemMO
         )
-        return self.createCell(tableView, forRowAt: indexPath, playlistItem: playlistItem)
+        return createCell(tableView, forRowAt: indexPath, playlistItem: playlistItem)
       }
     source.playlist = playlist
     return source
@@ -235,15 +238,18 @@ class PlaylistDetailVC: SingleSnapshotFetchedResultsTableViewController<Playlist
       self?.detailOperationsView?.refresh()
     }
 
-    containableAtIndexPathCallback = { indexPath in
-      self.fetchedResultsController.getWrappedEntity(at: indexPath).playable
+    containableAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      return fetchedResultsController.getWrappedEntity(at: indexPath).playable
     }
-    playContextAtIndexPathCallback = { indexPath in
-      self.convertIndexPathToPlayContext(songIndexPath: indexPath)
+    playContextAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      return convertIndexPathToPlayContext(songIndexPath: indexPath)
     }
-    swipeCallback = { indexPath, completionHandler in
-      let playlistItem = self.fetchedResultsController.getWrappedEntity(at: indexPath)
-      let playContext = self.convertIndexPathToPlayContext(songIndexPath: indexPath)
+    swipeCallback = { [weak self] indexPath, completionHandler in
+      guard let self else { return }
+      let playlistItem = fetchedResultsController.getWrappedEntity(at: indexPath)
+      let playContext = convertIndexPathToPlayContext(songIndexPath: indexPath)
       completionHandler(SwipeActionContext(
         containable: playlistItem.playable,
         playContext: playContext

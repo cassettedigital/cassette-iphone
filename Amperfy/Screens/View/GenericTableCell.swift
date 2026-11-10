@@ -41,7 +41,8 @@ class GenericTableCell: BasicTableCell {
   static let rowHeightWithoutImage: CGFloat = 28.0 + margin.bottom + margin.top
 
   private var container: PlayableContainable?
-  private var rootView: UITableViewController?
+  /// Weak: a cell lives in its page, so a strong page here kept it in memory (BUG-447).
+  private weak var rootView: UITableViewController?
 
   func display(
     container: PlayableContainable,

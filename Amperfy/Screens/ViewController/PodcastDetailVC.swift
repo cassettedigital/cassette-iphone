@@ -114,15 +114,18 @@ class PodcastDetailVC: SingleFetchedResultsTableViewController<PodcastEpisodeMO>
     navigationItem.rightBarButtonItem = optionsButton
 
     swipeDisplaySettings.playContextTypeOfElements = .podcast
-    containableAtIndexPathCallback = { indexPath in
-      self.fetchedResultsController.getWrappedEntity(at: indexPath)
+    containableAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      return fetchedResultsController.getWrappedEntity(at: indexPath)
     }
-    playContextAtIndexPathCallback = { indexPath in
-      let entity = self.fetchedResultsController.getWrappedEntity(at: indexPath)
+    playContextAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
+      let entity = fetchedResultsController.getWrappedEntity(at: indexPath)
       return PlayContext(containable: entity)
     }
-    swipeCallback = { indexPath, completionHandler in
-      let episode = self.fetchedResultsController.getWrappedEntity(at: indexPath)
+    swipeCallback = { [weak self] indexPath, completionHandler in
+      guard let self else { return }
+      let episode = fetchedResultsController.getWrappedEntity(at: indexPath)
       completionHandler(SwipeActionContext(containable: episode))
     }
   }

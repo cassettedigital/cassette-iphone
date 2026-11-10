@@ -89,23 +89,25 @@ class DirectoriesVC: MultiSourceTableViewController {
     )
     refreshHeaderView()
 
-    containableAtIndexPathCallback = { indexPath in
+    containableAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
       switch indexPath.section {
       case 0:
         let subdirectoryIndexPath = IndexPath(row: indexPath.row, section: 0)
-        return self.subdirectoriesFetchedResultsController
+        return subdirectoriesFetchedResultsController
           .getWrappedEntity(at: subdirectoryIndexPath)
       case 1:
         let songIndexPath = IndexPath(row: indexPath.row, section: 0)
-        return self.songsFetchedResultsController.getWrappedEntity(at: songIndexPath)
+        return songsFetchedResultsController.getWrappedEntity(at: songIndexPath)
       default:
         return nil
       }
     }
-    playContextAtIndexPathCallback = { indexPath in
+    playContextAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
       switch indexPath.section {
       case 0:
-        let subdirectory = self.subdirectoriesFetchedResultsController
+        let subdirectory = subdirectoriesFetchedResultsController
           .getWrappedEntity(at: IndexPath(
             row: indexPath.row,
             section: 0
@@ -131,15 +133,16 @@ class DirectoriesVC: MultiSourceTableViewController {
         return PlayContext(containable: subdirectory)
       case 1:
         let songIndexPath = IndexPath(row: indexPath.row, section: 0)
-        return self.convertIndexPathToPlayContext(songIndexPath: songIndexPath)
+        return convertIndexPathToPlayContext(songIndexPath: songIndexPath)
       default:
         return nil
       }
     }
-    swipeCallback = { indexPath, completionHandler in
+    swipeCallback = { [weak self] indexPath, completionHandler in
+      guard let self else { return }
       switch indexPath.section {
       case 0:
-        let subdirectory = self.subdirectoriesFetchedResultsController
+        let subdirectory = subdirectoriesFetchedResultsController
           .getWrappedEntity(at: IndexPath(
             row: indexPath.row,
             section: 0
@@ -164,15 +167,16 @@ class DirectoriesVC: MultiSourceTableViewController {
         }
       case 1:
         let songIndexPath = IndexPath(row: indexPath.row, section: 0)
-        let song = self.songsFetchedResultsController.getWrappedEntity(at: songIndexPath)
-        let playContext = self.convertIndexPathToPlayContext(songIndexPath: songIndexPath)
+        let song = songsFetchedResultsController.getWrappedEntity(at: songIndexPath)
+        let playContext = convertIndexPathToPlayContext(songIndexPath: songIndexPath)
         completionHandler(SwipeActionContext(containable: song, playContext: playContext))
       default:
         completionHandler(nil)
       }
     }
-    resultUpdateHandler?.changesDidEnd = {
-      self.updateContentUnavailable()
+    resultUpdateHandler?.changesDidEnd = { [weak self] in
+      guard let self else { return }
+      updateContentUnavailable()
     }
   }
 

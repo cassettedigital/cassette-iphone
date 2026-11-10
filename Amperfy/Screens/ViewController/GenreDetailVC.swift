@@ -116,20 +116,21 @@ class GenreDetailVC: MultiSourceTableViewController {
     }
     navigationItem.rightBarButtonItem = optionsButton
 
-    containableAtIndexPathCallback = { indexPath in
+    containableAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
       switch indexPath.section + 0 {
       case LibraryElement.Artist.rawValue:
-        return self.artistsFetchedResultsController.getWrappedEntity(at: IndexPath(
+        return artistsFetchedResultsController.getWrappedEntity(at: IndexPath(
           row: indexPath.row,
           section: 0
         ))
       case LibraryElement.Album.rawValue:
-        return self.albumsFetchedResultsController.getWrappedEntity(at: IndexPath(
+        return albumsFetchedResultsController.getWrappedEntity(at: IndexPath(
           row: indexPath.row,
           section: 0
         ))
       case LibraryElement.Song.rawValue:
-        return self.songsFetchedResultsController.getWrappedEntity(at: IndexPath(
+        return songsFetchedResultsController.getWrappedEntity(at: IndexPath(
           row: indexPath.row,
           section: 0
         ))
@@ -137,22 +138,23 @@ class GenreDetailVC: MultiSourceTableViewController {
         return nil
       }
     }
-    playContextAtIndexPathCallback = { indexPath in
+    playContextAtIndexPathCallback = { [weak self] indexPath in
+      guard let self else { return nil }
       switch indexPath.section + 0 {
       case LibraryElement.Artist.rawValue:
-        let entity = self.artistsFetchedResultsController.getWrappedEntity(at: IndexPath(
+        let entity = artistsFetchedResultsController.getWrappedEntity(at: IndexPath(
           row: indexPath.row,
           section: 0
         ))
         return Self.onPhonePlayContext(entity)
       case LibraryElement.Album.rawValue:
-        let entity = self.albumsFetchedResultsController.getWrappedEntity(at: IndexPath(
+        let entity = albumsFetchedResultsController.getWrappedEntity(at: IndexPath(
           row: indexPath.row,
           section: 0
         ))
         return Self.onPhonePlayContext(entity)
       case LibraryElement.Song.rawValue:
-        let entity = self.songsFetchedResultsController.getWrappedEntity(at: IndexPath(
+        let entity = songsFetchedResultsController.getWrappedEntity(at: IndexPath(
           row: indexPath.row,
           section: 0
         ))
@@ -161,10 +163,11 @@ class GenreDetailVC: MultiSourceTableViewController {
         return nil
       }
     }
-    swipeCallback = { indexPath, completionHandler in
+    swipeCallback = { [weak self] indexPath, completionHandler in
+      guard let self else { return }
       switch indexPath.section + 0 {
       case LibraryElement.Artist.rawValue:
-        let artist = self.artistsFetchedResultsController.getWrappedEntity(at: IndexPath(
+        let artist = artistsFetchedResultsController.getWrappedEntity(at: IndexPath(
           row: indexPath.row,
           section: 0
         ))
@@ -192,7 +195,7 @@ class GenreDetailVC: MultiSourceTableViewController {
           ))
         }
       case LibraryElement.Album.rawValue:
-        let album = self.albumsFetchedResultsController.getWrappedEntity(at: IndexPath(
+        let album = albumsFetchedResultsController.getWrappedEntity(at: IndexPath(
           row: indexPath.row,
           section: 0
         ))
@@ -220,8 +223,8 @@ class GenreDetailVC: MultiSourceTableViewController {
         }
       case LibraryElement.Song.rawValue:
         let songIndexPath = IndexPath(row: indexPath.row, section: 0)
-        let song = self.songsFetchedResultsController.getWrappedEntity(at: songIndexPath)
-        let playContext = self.convertIndexPathToPlayContext(songIndexPath: songIndexPath)
+        let song = songsFetchedResultsController.getWrappedEntity(at: songIndexPath)
+        let playContext = convertIndexPathToPlayContext(songIndexPath: songIndexPath)
         completionHandler(SwipeActionContext(containable: song, playContext: playContext))
       default:
         completionHandler(nil)
@@ -345,15 +348,20 @@ class GenreDetailVC: MultiSourceTableViewController {
   private func onPhoneOptionsMenuActions() -> [UIMenuElement] {
     let settings = appDelegate.storage.settings.user
     var playActions: [UIMenuElement] = [
-      UIAction(title: "Play", image: .play) { _ in
-        self.withListedSongs { songs in
-          self.appDelegate.player.play(context: PlayContext(containable: self.genre, playables: songs))
+      UIAction(title: "Play", image: .play) { [weak self] _ in
+        guard let self else { return }
+        withListedSongs { songs in
+          self.appDelegate.player.play(context: PlayContext(
+            containable: self.genre,
+            playables: songs
+          ))
         }
       },
     ]
     if settings.isPlayerShuffleButtonEnabled {
-      playActions.append(UIAction(title: "Shuffle", image: .shuffle) { _ in
-        self.withListedSongs { songs in
+      playActions.append(UIAction(title: "Shuffle", image: .shuffle) { [weak self] _ in
+        guard let self else { return }
+        withListedSongs { songs in
           self.appDelegate.player
             .playShuffled(context: PlayContext(containable: self.genre, playables: songs))
         }
@@ -363,18 +371,21 @@ class GenreDetailVC: MultiSourceTableViewController {
       UIMenu(options: .displayInline, children: playActions),
       // the two queue verbs, as in every other menu (EntityPreviewVC.createMusicQueueAction)
       UIMenu(options: .displayInline, children: [
-        UIAction(title: "Play Next", image: .userQueueInsert) { _ in
-          self.withListedSongs { self.appDelegate.player.insertUserQueue(playables: $0) }
+        UIAction(title: "Play Next", image: .userQueueInsert) { [weak self] _ in
+          guard let self else { return }
+          withListedSongs { self.appDelegate.player.insertUserQueue(playables: $0) }
         },
-        UIAction(title: "Add to Queue", image: .userQueueAppend) { _ in
-          self.withListedSongs { self.appDelegate.player.appendUserQueue(playables: $0) }
+        UIAction(title: "Add to Queue", image: .userQueueAppend) { [weak self] _ in
+          guard let self else { return }
+          withListedSongs { self.appDelegate.player.appendUserQueue(playables: $0) }
         },
       ]),
     ]
     if settings.isOnlineMode {
       actions.append(UIMenu(options: .displayInline, children: [
-        UIAction(title: "Add to Playlist", image: .playlistPlus) { _ in
-          self.withListedSongs { songs in
+        UIAction(title: "Add to Playlist", image: .playlistPlus) { [weak self] _ in
+          guard let self else { return }
+          withListedSongs { songs in
             let selectPlaylistVC = AppStoryboard.Main
               .segueToPlaylistSelector(account: self.account, itemsToAdd: songs.filterSongs())
             self.present(UINavigationController(rootViewController: selectPlaylistVC), animated: true)
