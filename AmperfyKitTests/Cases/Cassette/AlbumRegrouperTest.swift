@@ -231,6 +231,72 @@ class AlbumRegrouperTest: XCTestCase {
     )
   }
 
+  /// BUG-582: a compilation whose files name each song's performer. The cloud keys the album
+  /// to "Various Artists"; the first song's own artist row (JAY-Z) must not be re-keyed onto
+  /// that identity, or the album reads as JAY-Z's and his songs hang off the compilation.
+  func testCompilationDoesNotTakeAPerformersRow() throws {
+    UserDefaults.standard.set(false, forKey: CassetteLibraryFilterProvider.serverModeDefaultsKey)
+
+    let gatsby = seedAlbum(id: "subs-gatsby", name: "The Great Gatsby")
+    let s1 = seedSong(id: "gatsby-1", album: gatsby, owned: true)
+    let s2 = seedSong(id: "gatsby-2", album: gatsby, owned: true)
+    let jay = library.createArtist(account: account)
+    jay.id = "subs-jayz"
+    jay.name = "JAY-Z"
+    let lana = library.createArtist(account: account)
+    lana.id = "subs-lana"
+    lana.name = "Lana Del Rey"
+    library.getSong(for: account, id: s1)?.artist = jay
+    library.getSong(for: account, id: s2)?.artist = lana
+    try context.save()
+
+    let vaKey = "inherited-artist:various artists"
+    let groupKey = "various artists\u{0}the great gatsby"
+    let items = [
+      item(
+        sid: s1,
+        key: groupKey,
+        album: "The Great Gatsby",
+        artist: "Various Artists",
+        artistKey: vaKey
+      ),
+      item(
+        sid: s2,
+        key: groupKey,
+        album: "The Great Gatsby",
+        artist: "Various Artists",
+        artistKey: vaKey
+      ),
+    ]
+    _ = AlbumRegrouper(context: context).regroup(items: items, accountInfo: account.info)
+
+    let identity = try XCTUnwrap(library.getArtist(for: account, id: vaKey))
+    XCTAssertEqual(
+      identity.name,
+      "Various Artists",
+      "the compilation's identity carries its own name"
+    )
+    let jayRow = try XCTUnwrap(library.getArtist(for: account, id: "subs-jayz"))
+    XCTAssertEqual(jayRow.name, "JAY-Z", "the performer's row keeps its own identity")
+    let album = library.getAlbum(for: account, id: groupKey, isDetailFaultResolution: false)
+    XCTAssertEqual(album?.artist?.name, "Various Artists")
+  }
+
+  /// BUG-582: the same artist under another spelling still folds; another artist never does.
+  func testOnlyTheSameNameMayTakeAnIdentity() {
+    let fun = library.createArtist(account: account)
+    fun.name = "fun."
+    XCTAssertTrue(AlbumRegrouper.mayTakeIdentity(fun, named: "Fun"))
+    let acdc = library.createArtist(account: account)
+    acdc.name = "AC/DC"
+    XCTAssertTrue(AlbumRegrouper.mayTakeIdentity(acdc, named: "ACDC"))
+    let jay = library.createArtist(account: account)
+    jay.name = "JAY-Z"
+    XCTAssertFalse(AlbumRegrouper.mayTakeIdentity(jay, named: "Various Artists"))
+    let nameless = library.createArtist(account: account)
+    XCTAssertTrue(AlbumRegrouper.mayTakeIdentity(nameless, named: "Various Artists"))
+  }
+
   func testRegroupCollapsesSplitKeepsBoxSetSeparatePreservesGhost() throws {
     let items = seedScenario()
     let manager = DeviceOwnershipManager(context: context)

@@ -174,7 +174,12 @@ public final class AlbumRegrouper {
         // Cloud identity present → find-or-create by the key, re-keying an existing row
         // onto it so "Fun"/"fun." fold to one identity while its NAME is untouched.
         if let existing = library.getArtist(for: account, id: artistId) { return existing }
-        if let songArtist {
+        // Only the same artist under another spelling is re-keyed ("Fun"/"fun."). A song's
+        // own artist with another name is a different person: on a compilation, the
+        // performer's row (JAY-Z) re-keyed onto "Various Artists" made the album read as
+        // theirs and hung their own songs off the compilation's identity (BUG-582). Then
+        // the identity is found by the album's name or made fresh below.
+        if let songArtist, Self.mayTakeIdentity(songArtist, named: item.displayArtist) {
           if songArtist.id != artistId { songArtist.id = artistId }
           return songArtist
         }
@@ -515,6 +520,23 @@ public final class AlbumRegrouper {
       }
     }
     return summary
+  }
+
+  /// Whether `artist`'s row may be re-keyed onto the identity of an album credited to
+  /// `displayArtist`: it carries no name of its own, or the same name under another spelling
+  /// (case, accents, punctuation and spaces aside: "Fun" and "fun.", "AC/DC" and "ACDC").
+  static func mayTakeIdentity(_ artist: Artist, named displayArtist: String) -> Bool {
+    guard let own = artist.managedObject.name, !own.isEmpty else { return true }
+    return nameKey(own) == nameKey(displayArtist)
+  }
+
+  private static func nameKey(_ name: String) -> String {
+    let folded = name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil)
+    return String(
+      folded.lowercased().unicodeScalars
+        .filter { CharacterSet.alphanumerics.contains($0) }
+        .map(Character.init)
+    )
   }
 
   /// Fold an emptied legacy album's (or folded artist's) user annotations into the row that
