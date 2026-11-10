@@ -428,6 +428,10 @@ public final class AlbumRegrouper {
               if let superseded, superseded.managedObject !== legacy.artwork?.managedObject {
                 library.deleteArtwork(artwork: superseded)
               }
+              // MOVE the cover, don't share it: the legacy album is deleted below and its
+              // artwork link cascades, which would take the group album's cover with it
+              // (BUG-104).
+              legacy.managedObject.artwork = nil
             }
             mergedLegacyIds.insert(legacy.id)
           }
@@ -479,6 +483,7 @@ public final class AlbumRegrouper {
       let albumReq: NSFetchRequest<AlbumMO> = AlbumMO.fetchRequest()
       let allAlbums = (try? context.fetch(albumReq)) ?? []
       for albumMO in allAlbums where (albumMO.songs?.count ?? 0) == 0 {
+        Self.letGoOfSharedArtwork(albumMO)
         context.delete(albumMO)
         summary.purgedAlbums += 1
       }
@@ -503,6 +508,7 @@ public final class AlbumRegrouper {
            winner.managedObject !== artistMO, !winner.managedObject.isDeleted {
           mergeAnnotations(from: Artist(managedObject: artistMO), into: winner)
         }
+        Self.letGoOfSharedArtwork(artistMO)
         context.delete(artistMO)
         summary.purgedArtists += 1
       }
@@ -520,6 +526,15 @@ public final class AlbumRegrouper {
       }
     }
     return summary
+  }
+
+  /// Deleting an owner deletes its artwork with it (the owner-to-artwork link cascades), shared
+  /// or not, and the other owners of a shared artwork lose their picture. So before a purge, a
+  /// row that holds a SHARED artwork lets go of it; an artwork only this row holds goes with it,
+  /// as before (BUG-104).
+  static func letGoOfSharedArtwork(_ owner: AbstractLibraryEntityMO) {
+    guard let artwork = owner.artwork, (artwork.owners?.count ?? 0) > 1 else { return }
+    owner.artwork = nil
   }
 
   /// Whether `artist`'s row may be re-keyed onto the identity of an album credited to

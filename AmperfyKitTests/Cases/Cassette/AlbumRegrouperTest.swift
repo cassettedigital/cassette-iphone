@@ -360,4 +360,110 @@ class AlbumRegrouperTest: XCTestCase {
       4
     )
   }
+
+  // MARK: BUG-104 seam 2: a purge must not take a survivor's picture
+
+  /// The legacy album's working cover is handed to the group album, and then the emptied legacy
+  /// album is deleted. The owner-to-artwork link cascades, so a cover that was shared instead of
+  /// moved went with it and the group album lost it.
+  func testCoverHandedToTheGroupAlbumSurvivesThePurgeOfItsLegacyAlbum() throws {
+    UserDefaults.standard.set(false, forKey: CassetteLibraryFilterProvider.serverModeDefaultsKey)
+    let legacy = seedAlbum(id: "subs-cover-legacy", name: "Cover Album")
+    let sid = seedSong(id: "cover-1", album: legacy, owned: true)
+    let rel = try XCTUnwrap(URL(string: "bug104-legacy-cover.png"))
+    let abs = try XCTUnwrap(CacheFileManager.shared.getAbsoluteAmperfyPath(relFilePath: rel))
+    try CacheFileManager.shared.writeDataExcludedFromBackup(
+      data: Data([1, 2, 3]),
+      to: abs,
+      accountInfo: account.info
+    )
+    defer { try? FileManager.default.removeItem(at: abs) }
+    let cover = library.createArtwork(account: account)
+    cover.relFilePath = rel
+    cover.status = .CustomImage
+    legacy.artwork = cover
+    try context.save()
+    XCTAssertNotNil(legacy.artwork?.imagePath, "the legacy cover is on disk")
+
+    let key = "cover band\u{0}cover album"
+    _ = AlbumRegrouper(context: context).regroup(
+      items: [item(sid: sid, key: key, album: "Cover Album", artist: "Cover Band")],
+      accountInfo: account.info
+    )
+
+    XCTAssertNil(
+      library.getAlbum(for: account, id: "subs-cover-legacy", isDetailFaultResolution: false),
+      "the emptied legacy album is purged"
+    )
+    let group = try XCTUnwrap(library.getAlbum(
+      for: account,
+      id: key,
+      isDetailFaultResolution: false
+    ))
+    XCTAssertNotNil(group.artwork, "the group album still has its artwork row")
+    XCTAssertNotNil(group.artwork?.imagePath, "and its cover is still on disk")
+  }
+
+  /// A folded synthetic artist that shares a picture with the identity it folded into goes, and
+  /// the identity keeps the picture.
+  func testPurgingAFoldedArtistDoesNotTakeTheIdentitysPicture() throws {
+    UserDefaults.standard.set(false, forKey: CassetteLibraryFilterProvider.serverModeDefaultsKey)
+    let album = seedAlbum(id: "subs-share-a", name: "Shared Picture")
+    let sid = seedSong(id: "share-1", album: album, owned: true)
+    let artistKey = "inherited-artist:sharer"
+    let winner = library.createArtist(account: account)
+    winner.id = artistKey
+    winner.name = "Sharer"
+    let loser = library.createArtist(account: account)
+    loser.id = "cassette-synth-artist:Sharer (old)"
+    loser.name = "Sharer (old)"
+    let photo = library.createArtwork(account: account)
+    photo.remoteInfo = ArtworkRemoteInfo(id: artistKey, type: "artist")
+    winner.artwork = photo
+    loser.artwork = photo
+    library.getSong(for: account, id: sid)?.artist = winner
+    album.artist = winner
+    try context.save()
+
+    _ = AlbumRegrouper(context: context).regroup(
+      items: [item(
+        sid: sid,
+        key: "sharer\u{0}shared picture",
+        album: "Shared Picture",
+        artist: "Sharer",
+        artistKey: artistKey
+      )],
+      accountInfo: account.info
+    )
+
+    XCTAssertNil(
+      library.getArtist(for: account, id: "cassette-synth-artist:Sharer (old)"),
+      "the ownerless synthetic artist is purged"
+    )
+    let kept = try XCTUnwrap(library.getArtist(for: account, id: artistKey))
+    XCTAssertNotNil(kept.artwork, "the identity keeps its picture row")
+  }
+
+  /// What only the purged row held goes with it, as before.
+  func testPurgingAnArtistTakesItsOwnPictureWithIt() throws {
+    UserDefaults.standard.set(false, forKey: CassetteLibraryFilterProvider.serverModeDefaultsKey)
+    let album = seedAlbum(id: "subs-own-a", name: "Own Picture")
+    let sid = seedSong(id: "own-1", album: album, owned: true)
+    let loser = library.createArtist(account: account)
+    loser.id = "cassette-synth-artist:Gone"
+    loser.name = "Gone"
+    let photo = library.createArtwork(account: account)
+    photo.remoteInfo = ArtworkRemoteInfo(id: loser.id, type: "artist")
+    loser.artwork = photo
+    let photoID = photo.managedObject.objectID
+    try context.save()
+
+    _ = AlbumRegrouper(context: context).regroup(
+      items: [item(sid: sid, key: "own\u{0}own picture", album: "Own Picture", artist: "Own")],
+      accountInfo: account.info
+    )
+
+    XCTAssertNil(library.getArtist(for: account, id: "cassette-synth-artist:Gone"))
+    XCTAssertNil(try? context.existingObject(with: photoID), "no orphaned artwork row is left")
+  }
 }
