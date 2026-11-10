@@ -315,19 +315,20 @@ public final class IntentExecutor {
   /// Pull-to-refresh entry point (B2). Drives the full on-demand convergence
   /// chain so the user's gesture reflects the Mac's CURRENT disk: (1) ask the
   /// paired Player's sidecar to re-read the disk and push the refreshed index to
-  /// the cloud (scan-first convergence over the LAN), then (2) re-report this
-  /// device's full inventory (foreground throttle bypassed) and apply the intents
-  /// the cloud reconcile produces. Best-effort throughout — if the sidecar is
-  /// unreachable or its port is unknown, convergeOnPlayer returns a non-fatal
-  /// result and we still fall through to the normal poll, so the refresh degrades
-  /// to lazy convergence (watcher + heartbeat) rather than failing.
+  /// the cloud (through the hub's encrypted Wi-Fi gateway, signed in, BUG-078),
+  /// then (2) re-report this device's full inventory (foreground throttle bypassed)
+  /// and apply the intents the cloud reconcile produces. Best-effort throughout: if
+  /// the computer is out of reach, still on plain http, or too old for the ask,
+  /// convergeOnPlayer returns a non-fatal result and we still fall through to the
+  /// normal poll, so the refresh degrades to lazy convergence (watcher + heartbeat)
+  /// rather than failing.
   ///
   /// Wire the library view's pull-to-refresh (UIRefreshControl / .refreshable)
   /// to `await …intentExecutor.convergeAndRefresh()`.
   public func convergeAndRefresh() async {
-    let serverUrl = AmperKit.shared.storage.settings.accounts.activeSetting.read
-      .loginCredentials?.serverUrl
-    _ = await CassetteSyncAPI.shared.convergeOnPlayer(serverUrl: serverUrl)
+    let credentials = AmperKit.shared.storage.settings.accounts.activeSetting.read
+      .loginCredentials
+    _ = await CassetteSyncAPI.shared.convergeOnPlayer(credentials: credentials)
     // Force a fresh full-inventory report (bypass the throttle) so the cloud
     // reconcile runs against current truth, then apply what it queued.
     lastFullInventoryReportAt = nil

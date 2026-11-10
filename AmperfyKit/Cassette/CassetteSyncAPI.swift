@@ -630,10 +630,11 @@ public struct CassetteAccount: Sendable, Decodable {
   /// decodes cleanly as `false` (on-device-only) instead of failing.
   public let serverMode: Bool
   /// The paired Cassette Player's sidecar HTTP port (default 5173), distinct from
-  /// the Navidrome LAN port (loginCredentials.serverUrl). The phone reaches the
-  /// sidecar at `http://<lanHost>:<sidecarPort>` for on-demand scan-first
-  /// convergence (pull-to-refresh → POST /api/library/converge). Optional decode:
-  /// null when no player is paired or an older sidecar/deploy doesn't emit it.
+  /// the Navidrome LAN port (loginCredentials.serverUrl). Still decoded and kept, but
+  /// the phone no longer builds any address from it: the hub's own server listens on
+  /// the computer only, and the rescan ask goes through the hub's Wi-Fi gateway
+  /// instead (`convergeOnPlayer`, BUG-078). Optional decode: null when no player is
+  /// paired or an older sidecar/deploy doesn't emit it.
   public let sidecarPort: Int?
 
   /// Cassette Phase 2b: account-sourced download quality tier ("lossless" |
@@ -851,8 +852,8 @@ public final class CassetteSyncAPI: @unchecked Sendable {
 
   /// The paired Player's sidecar HTTP port, cached from `/api/sync/account`.
   /// `nil`/0 when unknown (no player paired, or a sidecar/deploy that predates
-  /// the field) — callers must treat nil as "on-demand convergence unavailable"
-  /// and fall back to lazy convergence (watcher + heartbeat).
+  /// the field). Nothing builds an address from it any more: that port answers
+  /// on the computer only (BUG-078, see `convergeOnPlayer`).
   public static var sidecarPort: Int? {
     let value = UserDefaults.standard.integer(forKey: sidecarPortKey)
     return value > 0 ? value : nil
@@ -1666,51 +1667,96 @@ public final class CassetteSyncAPI: @unchecked Sendable {
 
   // MARK: On-demand convergence (B2 pull-to-refresh)
 
-  public enum ConvergeResult: Sendable {
-    case converged // sidecar reported a completed scan-first pass
-    case timeout // sidecar still working past its window — proceed lazily
-    case unavailable // no sidecar port known, or LAN host unresolved
-    case unreachable // network error reaching the sidecar
+  public enum ConvergeResult: Sendable, Equatable {
+    case converged // the computer finished reading its music folder again
+    case timeout // the computer is still reading past its window: proceed lazily
+    case unavailable // no encrypted address or sign-in yet, or the computer can't take the ask
+    case unreachable // network error reaching the computer
   }
 
-  /// Drive an on-demand scan-first convergence on the paired Player's sidecar
-  /// over the LAN, then return so the caller can re-report inventory + reconcile.
-  /// The sidecar base is `http://<host-of-serverUrl>:<sidecarPort>` — the phone's
-  /// serverUrl carries Navidrome's host:4533, so we keep the host and swap the
-  /// port for the sidecar's (advertised via /api/sync/account). This is a LAN
-  /// call to the sidecar — NOT cassette.digital — so it carries no bearer/device
-  /// headers. Blocks up to ~95s (just past the sidecar's 90s convergeMaxWait).
-  /// Best-effort: every failure returns a non-fatal result so pull-to-refresh
-  /// degrades to lazy convergence (the watcher + heartbeat), never an error wall.
-  public func convergeOnPlayer(serverUrl: String?) async -> ConvergeResult {
-    guard let port = Self.sidecarPort, port > 0 else { return .unavailable }
-    guard let serverUrl,
-          let comps = URLComponents(string: serverUrl),
-          let host = comps.host
+  /// Ask the paired computer to read its music folder again and tell the cloud, then return
+  /// so the caller can re-report inventory and reconcile (Settings > Resync Library and
+  /// Home's pull-to-refresh).
+  ///
+  /// The hub's own server listens on the computer only, so until BUG-078 this ask (made to
+  /// the hub's own port) was refused every time. It now goes where the phone already plays
+  /// music from: the hub's Wi-Fi gateway at the address in use (`activeBackendServerUrl`,
+  /// its host and port kept), through `CassetteHubTrust.session` so the computer's key pin
+  /// applies, with the same Subsonic sign-in the phone sends to `/rest`. The gateway takes it
+  /// only encrypted, as a POST, with a sign-in its music server accepts. While the address
+  /// in use is still plain http (the cloud has no key for this computer yet) the phone
+  /// doesn't ask at all. A hub from before the door answers 404.
+  ///
+  /// Blocks up to ~95s (just past the hub's 90s wait). Best-effort: every failure returns a
+  /// non-fatal result, so the refresh still does the phone's half and the computer's own
+  /// folder watch catches up, never an error wall.
+  public func convergeOnPlayer(credentials: LoginCredentials?) async -> ConvergeResult {
+    guard let credentials,
+          let url = Self.convergeURL(
+            activeServerUrl: credentials.activeBackendServerUrl,
+            username: credentials.username,
+            password: credentials.password
+          )
     else { return .unavailable }
-
-    var sidecar = URLComponents()
-    sidecar.scheme = comps.scheme ?? "http"
-    sidecar.host = host
-    sidecar.port = port
-    sidecar.path = "/api/library/converge"
-    guard let url = sidecar.url else { return .unavailable }
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.timeoutInterval = 95
-    let lanSession = URLSession(configuration: .ephemeral)
     do {
-      let (data, response) = try await lanSession.data(for: request)
-      guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-        return .unreachable
-      }
-      if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let (data, response) = try await CassetteHubTrust.session.data(for: request)
+      guard let http = response as? HTTPURLResponse else { return .unreachable }
+      return Self.convergeResult(status: http.statusCode, body: data)
+    } catch {
+      return .unreachable
+    }
+  }
+
+  static let convergePath = "/api/library/converge"
+
+  /// The address that asks the computer to read its folder again: the address in use with
+  /// its host and port, the converge path, and the Subsonic sign-in (`u`, `t` = md5 of the
+  /// password and salt, `s`, `v`, `c`), the way `SubsonicServerApi` signs every `/rest`
+  /// call. nil when the address isn't https (no key pin yet, so the gateway would refuse
+  /// it) or there's no sign-in to send.
+  static func convergeURL(
+    activeServerUrl: String,
+    username: String,
+    password: String,
+    salt: String = String.generateRandomString(ofLength: 16)
+  )
+    -> URL? {
+    guard !username.isEmpty, !password.isEmpty, !salt.isEmpty,
+          var parts = URLComponents(string: activeServerUrl),
+          parts.scheme?.lowercased() == "https",
+          let host = parts.host, !host.isEmpty
+    else { return nil }
+    parts.path = convergePath
+    parts.fragment = nil
+    parts.queryItems = [
+      URLQueryItem(name: "u", value: username),
+      URLQueryItem(name: "t", value: StringHasher.md5Hex(dataString: password + salt)),
+      URLQueryItem(name: "s", value: salt),
+      URLQueryItem(name: "v", value: "1.16.1"),
+      URLQueryItem(name: "c", value: "Amperfy"),
+    ]
+    return parts.url
+  }
+
+  /// What the gateway's answer means. 200 with `"converged":true` is a finished rescan, any
+  /// other 200 is the hub's 90s timeout. 401 (sign-in refused), 403 (not encrypted) and 404
+  /// (a hub from before the door) mean the computer can't take this ask, so the refresh falls
+  /// back to the phone's half as before. Anything else is treated as not reaching it.
+  static func convergeResult(status: Int, body: Data) -> ConvergeResult {
+    switch status {
+    case 200:
+      if let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
          (json["converged"] as? Bool) == true {
         return .converged
       }
       return .timeout
-    } catch {
+    case 401, 403, 404:
+      return .unavailable
+    default:
       return .unreachable
     }
   }
