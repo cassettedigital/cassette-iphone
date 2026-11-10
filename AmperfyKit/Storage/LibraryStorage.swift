@@ -1436,6 +1436,11 @@ public class LibraryStorage: PlayableFileCachable {
     return artists ?? [Artist]()
   }
 
+  /// The artist with this id. Two rows can share an id (a stub beside the real row, a re-key
+  /// part way through), and the store returns them in no set order, so an id used to resolve
+  /// to a different row from one look to the next (BUG-102). This always picks the same one:
+  /// the row holding the most songs and albums, ties to the lowest number in the store (the row
+  /// saved first, for rows saved at different times).
   public func getArtist(for account: Account, id: String) -> Artist? {
     let fetchRequest: NSFetchRequest<ArtistMO> = ArtistMO.fetchRequest()
     fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
@@ -1446,9 +1451,31 @@ public class LibraryStorage: PlayableFileCachable {
         NSString(string: id)
       ),
     ])
-    fetchRequest.fetchLimit = 1
-    let artists = try? context.fetch(fetchRequest)
-    return artists?.lazy.compactMap { Artist(managedObject: $0) }.first
+    guard let artists = try? context.fetch(fetchRequest), let first = artists.first else {
+      return nil
+    }
+    guard artists.count > 1 else { return Artist(managedObject: first) }
+    let chosen = artists.max { lhs, rhs in
+      let lhsRichness = Self.artistRelationshipRichness(lhs)
+      let rhsRichness = Self.artistRelationshipRichness(rhs)
+      if lhsRichness != rhsRichness { return lhsRichness < rhsRichness }
+      return Self.storeOrderKey(lhs) > Self.storeOrderKey(rhs)
+    } ?? first
+    return Artist(managedObject: chosen)
+  }
+
+  /// How much hangs off an artist row: its songs plus its albums.
+  private static func artistRelationshipRichness(_ mo: ArtistMO) -> Int {
+    (mo.songs?.count ?? 0) + (mo.albums?.count ?? 0)
+  }
+
+  /// A row's place in the store, for a tie that must come out the same every time: the
+  /// number at the end of its object id (`.../ArtistMO/p12` is 12), else the whole address.
+  private static func storeOrderKey(_ mo: NSManagedObject) -> (Int, String) {
+    let uri = mo.objectID.uriRepresentation().absoluteString
+    let tail = uri.split(separator: "/").last.map(String.init) ?? uri
+    let number = Int(tail.dropFirst()) ?? Int.max
+    return (number, uri)
   }
 
   public func getArtistLocal(for account: Account, name: String) -> Artist? {
@@ -1495,13 +1522,10 @@ public class LibraryStorage: PlayableFileCachable {
     guard let candidates = try? context.fetch(fetchRequest), candidates.count > 1 else {
       return artist
     }
-    func relationshipRichness(_ mo: ArtistMO) -> Int {
-      (mo.songs?.count ?? 0) + (mo.albums?.count ?? 0)
-    }
-    let currentRichness = relationshipRichness(artist.managedObject)
+    let currentRichness = Self.artistRelationshipRichness(artist.managedObject)
     guard let richestMO = candidates.max(by: {
-      relationshipRichness($0) < relationshipRichness($1)
-    }), relationshipRichness(richestMO) > currentRichness else {
+      Self.artistRelationshipRichness($0) < Self.artistRelationshipRichness($1)
+    }), Self.artistRelationshipRichness(richestMO) > currentRichness else {
       return artist
     }
     return Artist(managedObject: richestMO)

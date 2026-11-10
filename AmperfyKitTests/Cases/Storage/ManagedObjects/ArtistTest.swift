@@ -126,4 +126,42 @@ class ArtistTest: XCTestCase {
     XCTAssertEqual(artistFetched.imagePath(setting: .serverArtworkOnly), absFilePath.path)
     try! CacheFileManager.shared.removeItem(at: absFilePath, accountInfo: account.info)
   }
+
+  /// BUG-102: two rows can share an id (a stub beside the real row). The id resolves to the
+  /// same row every time, the one the songs hang off, whichever was made first.
+  func testDuplicateIdResolvesToTheRowWithTheSongs() {
+    for stubFirst in [true, false] {
+      let id = stubFirst ? "bug-102-stub-first" : "bug-102-real-first"
+      var made = [Artist]()
+      for name in stubFirst ? ["Stub", "Real"] : ["Real", "Stub"] {
+        let artist = library.createArtist(account: account)
+        artist.id = id
+        artist.name = name
+        made.append(artist)
+      }
+      let real = made.first { $0.name == "Real" }!
+      for _ in 0 ..< 2 {
+        let song = library.createSong(account: account)
+        song.artist = real
+      }
+      library.saveContext()
+      for _ in 0 ..< 5 {
+        XCTAssertEqual(library.getArtist(for: account, id: id)?.name, "Real", id)
+      }
+    }
+  }
+
+  /// BUG-102: with nothing to tell same-id rows apart, the one stored first wins, every time.
+  func testDuplicateIdTieResolvesToTheRowStoredFirst() {
+    let id = "bug-102-tie"
+    for name in ["One", "Two", "Three"] {
+      let artist = library.createArtist(account: account)
+      artist.id = id
+      artist.name = name
+      library.saveContext()
+    }
+    for _ in 0 ..< 5 {
+      XCTAssertEqual(library.getArtist(for: account, id: id)?.name, "One")
+    }
+  }
 }
