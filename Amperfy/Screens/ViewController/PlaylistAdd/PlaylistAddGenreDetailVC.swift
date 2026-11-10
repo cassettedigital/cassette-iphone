@@ -50,24 +50,16 @@ class PlaylistAddGenreDetailVC: MultiSourceTableViewController, PlaylistVCAddabl
     doneButton = addToPlaylistManager.createDoneButton()
     navigationItem.rightBarButtonItems = [doneButton]
 
-    artistsFetchedResultsController = GenreArtistsFetchedResultsController(
-      for: genre,
-      coreDataCompanion: appDelegate.storage.main,
-      isGroupedInAlphabeticSections: false
+    makeFetchedResultsControllers()
+    setFetchedResultsDelegates(self)
+    // The three lists bake what is on the phone into their queries, so they are rebuilt when
+    // that changes, as the Genre page's are (BUG-452).
+    appDelegate.notificationHandler.register(
+      self,
+      selector: #selector(libraryFilterChanged),
+      name: CassetteLibraryFilterProvider.filterChangedNotification,
+      object: nil
     )
-    artistsFetchedResultsController.delegate = self
-    albumsFetchedResultsController = GenreAlbumsFetchedResultsController(
-      for: genre,
-      coreDataCompanion: appDelegate.storage.main,
-      isGroupedInAlphabeticSections: false
-    )
-    albumsFetchedResultsController.delegate = self
-    songsFetchedResultsController = GenreSongsFetchedResultsController(
-      for: genre,
-      coreDataCompanion: appDelegate.storage.main,
-      isGroupedInAlphabeticSections: false
-    )
-    songsFetchedResultsController.delegate = self
     tableView.register(nibName: GenericTableCell.typeName)
     tableView.register(nibName: GenericTableCell.typeName)
     tableView.register(nibName: PlayableTableCell.typeName)
@@ -114,6 +106,49 @@ class PlaylistAddGenreDetailVC: MultiSourceTableViewController, PlaylistVCAddabl
 
   func updateTitle() {
     setNavBarTitle(title: addToPlaylistManager.title)
+  }
+
+  /// The three lists, reading what is on the phone once for all of them.
+  private func makeFetchedResultsControllers() {
+    let main = appDelegate.storage.main
+    let onPhone = CassetteOnPhoneSource.shared(CassetteOnPhoneIds.read(coreDataCompanion: main))
+    artistsFetchedResultsController = GenreArtistsFetchedResultsController(
+      for: genre,
+      coreDataCompanion: main,
+      isGroupedInAlphabeticSections: false,
+      onPhone: onPhone
+    )
+    albumsFetchedResultsController = GenreAlbumsFetchedResultsController(
+      for: genre,
+      coreDataCompanion: main,
+      isGroupedInAlphabeticSections: false,
+      onPhone: onPhone
+    )
+    songsFetchedResultsController = GenreSongsFetchedResultsController(
+      for: genre,
+      coreDataCompanion: main,
+      isGroupedInAlphabeticSections: false,
+      onPhone: onPhone
+    )
+  }
+
+  private func setFetchedResultsDelegates(_ delegate: NSFetchedResultsControllerDelegate?) {
+    artistsFetchedResultsController?.delegate = delegate
+    albumsFetchedResultsController?.delegate = delegate
+    songsFetchedResultsController?.delegate = delegate
+  }
+
+  /// What is on the phone changed (an album arrived, or left this phone) or Server Mode
+  /// flipped: rebuild the lists and run the current search again.
+  @objc
+  private func libraryFilterChanged() {
+    guard isViewLoaded else { return }
+    setFetchedResultsDelegates(nil)
+    makeFetchedResultsControllers()
+    if viewIfLoaded?.window != nil {
+      setFetchedResultsDelegates(self)
+    }
+    updateSearchResults(for: searchController)
   }
 
   override func viewWillDisappear(_ animated: Bool) {
