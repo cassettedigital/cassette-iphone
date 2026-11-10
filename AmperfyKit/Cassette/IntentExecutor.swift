@@ -59,6 +59,8 @@ public final class IntentExecutor {
   private var pendingAlbumAddsThisPass = 0
   private var hubReachedThisPass = false
   private var hubUnreachableThisPass = false
+  /// Whether the computer answered this pass, once asked (nil until an add needs it): one try a pass (BUG-886).
+  private var hubAnswerThisPass: Bool?
   // Once-per-launch device registration (user_devices upsert). The header
   // keep-alive rides every request; this full registration also refreshes
   // platform/model/app_version.
@@ -167,6 +169,7 @@ public final class IntentExecutor {
     pendingAlbumAddsThisPass = 0
     hubReachedThisPass = false
     hubUnreachableThisPass = false
+    hubAnswerThisPass = nil
     // Reset per-poll; set below by anything that constitutes real work.
     var pollDidWork = false
     artworkDidWorkThisPass = false
@@ -221,7 +224,6 @@ public final class IntentExecutor {
     }
 
     print("Cassette poll: received \(intents.count) actionable intent(s)")
-    if !intents.isEmpty { pollDidWork = true }
     pendingAlbumAddsThisPass = intents.filter { $0.scope == "album" && $0.intentKind != "remove" }.count
     // The fetch above round-tripped to cassette.digital with a valid bearer
     // token, so the device is paired and reachable: stamp the freshness signal
@@ -236,6 +238,12 @@ public final class IntentExecutor {
     await refreshAccountIfDue()
     for intent in intents {
       await executeIntent(intent)
+    }
+    // Work is progress: the computer answered, a download is moving, or something came off. Albums only waiting
+    // for a computer that's out of reach are not work, so a phone away from home settles to the idle pace
+    // instead of checking every 30 seconds (BUG-886); opening the app still checks at once.
+    if hubReachedThisPass || downloadsInFlightThisPass || intents.contains(where: { $0.intentKind == "remove" }) {
+      pollDidWork = true
     }
 
     // Removals just deleted owned tracks: repaint the on-device-only library ONCE,
@@ -1651,27 +1659,38 @@ public final class IntentExecutor {
       return
     }
 
-    if intent.state == "pending" {
-      try? await api.updateIntent(id: intent.id, state: "syncing")
-    }
-
     let isRemove = intent.intentKind == "remove"
 
     // Reachability: only an ADD needs the LAN Player (to pull files). A REMOVE
     // deletes local files + ownership rows, so it must run even with the Mac
     // off-LAN — gating removes on reachability used to strand them in "waiting".
+    // Asked once a pass, not once an album (BUG-886: each one cost a 5-second try).
     if !isRemove {
-      let reachable = await isCassettePlayerReachable()
+      let reachable: Bool
+      if let known = hubAnswerThisPass {
+        reachable = known
+      } else {
+        reachable = await isCassettePlayerReachable()
+        hubAnswerThisPass = reachable
+      }
       print("Cassette poll: intent \(intent.id) - Cassette Player reachable=\(reachable)")
       if reachable { hubReachedThisPass = true } else { hubUnreachableThisPass = true }
       guard reachable else {
-        try? await api.updateIntent(
-          id: intent.id,
-          state: "waiting",
-          error: "cassette_player_unreachable"
-        )
+        // already waiting: nothing to tell the cloud again on every pass
+        if intent.state != "waiting" {
+          try? await api.updateIntent(
+            id: intent.id,
+            state: "waiting",
+            error: "cassette_player_unreachable"
+          )
+        }
         return
       }
+    }
+
+    // Marked syncing only once it can go ahead, so an album out of reach goes pending -> waiting in one write.
+    if intent.state == "pending" {
+      try? await api.updateIntent(id: intent.id, state: "syncing")
     }
 
     // Tracks: an id-keyed remove (`localid@<clid>`) carries its target in the

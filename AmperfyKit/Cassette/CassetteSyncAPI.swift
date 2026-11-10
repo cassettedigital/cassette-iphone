@@ -1080,10 +1080,13 @@ public final class CassetteSyncAPI: @unchecked Sendable {
   /// the iPhone (the original device) keeps honoring them.
   public func getActionableIntents() async throws -> [CassetteSyncIntent] {
     struct Envelope: Decodable { let intents: [CassetteSyncIntent] }
-    let data = try await get(path: "/api/sync/intents")
+    // Only this device's open requests, not the account's whole history on every check (BUG-886). The filter
+    // below stays, so an older website answering with the full list still works.
+    let myDeviceId = Self.deviceId
+    let device = myDeviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? myDeviceId
+    let data = try await get(path: "/api/sync/intents?open=1&for_device=\(device)")
     let all = try JSONDecoder().decode(Envelope.self, from: data).intents
     let actionable: Set<String> = ["pending", "syncing", "waiting"]
-    let myDeviceId = Self.deviceId
     return all.filter {
       actionable.contains($0.state) &&
         ($0.targetDeviceId == nil || $0.targetDeviceId == myDeviceId)

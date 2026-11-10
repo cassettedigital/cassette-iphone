@@ -93,6 +93,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   // ADAPTIVE cadence — see scheduleNextCassettePoll. Background polling is still
   // out of scope; foregrounding and pull-to-refresh are the responsive triggers.
   private var cassetteIntentPollTimer: Timer?
+  /// True between becoming active and going to the background. A check still running when the app leaves the
+  /// foreground used to schedule the next one when it finished, so background audio kept the timer going
+  /// (BUG-886); now only a foreground app schedules.
+  private var cassettePollingInForeground = false
   /// While work is in flight (intents executing, artwork still converging) — keeps a
   /// transfer's completion snappy.
   private static let cassetteActivePollInterval: TimeInterval = 30
@@ -199,6 +203,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   // MARK: - Cassette intent polling (Phase 3.1)
 
   private func startCassetteIntentPolling() {
+    cassettePollingInForeground = true
     // Poll once immediately, then every 30s while in the foreground.
     // cassette: debug-only console tracing (gated so it doesn't ship / add
     // main-thread I/O in release).
@@ -226,6 +231,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
   /// app always polls immediately, which is what makes the idle interval affordable.
   private func scheduleNextCassettePoll() {
     cassetteIntentPollTimer?.invalidate()
+    guard cassettePollingInForeground else { return }
     let didWork = IntentExecutor.shared.lastPollDidWork
     let interval: TimeInterval = didWork
       ? Self.cassetteActivePollInterval
@@ -248,6 +254,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     #if DEBUG
       print("Cassette poll: backgrounded -> timer stopped")
     #endif
+    cassettePollingInForeground = false
     cassetteIntentPollTimer?.invalidate()
     cassetteIntentPollTimer = nil
   }
