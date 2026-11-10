@@ -152,6 +152,16 @@ class AlbumRegrouperTest: XCTestCase {
     library.getSong(for: account, id: sB)?.artist = synthFunDot
     albA.artist = synthFun
     albB.artist = synthFunDot
+    // BUG-98: what the person gave each spelling. "fun." is the one that folds away.
+    let earlier = Date(timeIntervalSince1970: 1_700_000_000)
+    let later = Date(timeIntervalSince1970: 1_750_000_000)
+    synthFun.rating = 2
+    synthFun.playCount = 3
+    synthFun.starredDate = later
+    synthFunDot.rating = 4
+    synthFunDot.playCount = 7
+    synthFunDot.starredDate = earlier
+    synthFunDot.isFavorite = true
     try context.save()
 
     let artistKey = "inherited-artist:fun"
@@ -189,6 +199,13 @@ class AlbumRegrouperTest: XCTestCase {
     )
     XCTAssertGreaterThanOrEqual(summary.purgedArtists, 1, "the emptied loser synthetic is purged")
 
+    // BUG-98: the folded spelling's annotations live on in the identity, not lost with it.
+    let identity = try XCTUnwrap(library.getArtist(for: account, id: artistKey))
+    XCTAssertEqual(identity.rating, 4, "highest rating kept")
+    XCTAssertEqual(identity.playCount, 10, "plays added up")
+    XCTAssertEqual(identity.starredDate, earlier, "earliest star kept")
+    XCTAssertTrue(identity.isFavorite, "a favourite on either stays a favourite")
+
     // Both group albums' artist line resolves to that one identity.
     let gotA = library.getAlbum(
       for: account,
@@ -207,6 +224,11 @@ class AlbumRegrouperTest: XCTestCase {
     let again = AlbumRegrouper(context: context).regroup(items: items, accountInfo: account.info)
     XCTAssertEqual(again.movedSongs, 0, "steady state: no moves")
     XCTAssertEqual(again.purgedArtists, 0, "steady state: nothing to purge")
+    XCTAssertEqual(
+      library.getArtist(for: account, id: artistKey)?.playCount,
+      10,
+      "plays never counted twice"
+    )
   }
 
   func testRegroupCollapsesSplitKeepsBoxSetSeparatePreservesGhost() throws {

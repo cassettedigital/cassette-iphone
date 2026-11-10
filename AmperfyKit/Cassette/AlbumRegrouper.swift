@@ -231,6 +231,9 @@ public final class AlbumRegrouper {
       var mergedLegacyIds = Set<String>() // legacy album ids already folded in
       var coverProvisioned = Set<String>() // album ids whose cover we've settled this pass
       var artistAdopted = Set<String>() // album ids whose display artist we've settled this pass
+      // BUG-98: an artist row a song or album left this pass -> the identity it went to, so
+      // the purge below can carry the emptied row's rating, plays and star onto it first.
+      var artistFoldedInto = [ObjectIdentifier: Artist]()
       var createdCount = 0 // local — nested target() can't mutate the outer summary
       var provisionedCount = 0 // local — albums (re)pointed at a native cover id this pass
 
@@ -305,6 +308,10 @@ public final class AlbumRegrouper {
       func adoptArtistIdentity(on album: Album, for item: CassetteDeviceGroupingItem, song: Song) {
         guard !artistAdopted.contains(album.id) else { return }
         let artist = artistIdentity(for: item, songArtist: song.artist)
+        for left in [song.artist, album.artist].compactMap({ $0 })
+          where left.id != artist.id && left.managedObject !== artist.managedObject {
+          artistFoldedInto[ObjectIdentifier(left.managedObject)] = artist
+        }
         if song.artist?.id != artist.id { song.artist = artist }
         if album.artist?.id != artist.id { album.artist = artist }
         artistAdopted.insert(album.id)
@@ -485,6 +492,12 @@ public final class AlbumRegrouper {
       let synthArtists = (try? context.fetch(artistReq)) ?? []
       for artistMO in synthArtists
         where (artistMO.songs?.count ?? 0) == 0 && (artistMO.albums?.count ?? 0) == 0 {
+        // The artist twin of the album fold (BUG-98): what the person gave the loser
+        // survives on the identity it folded into. Once per loser: it is deleted next.
+        if let winner = artistFoldedInto[ObjectIdentifier(artistMO)],
+           winner.managedObject !== artistMO, !winner.managedObject.isDeleted {
+          mergeAnnotations(from: Artist(managedObject: artistMO), into: winner)
+        }
         context.delete(artistMO)
         summary.purgedArtists += 1
       }
@@ -504,11 +517,14 @@ public final class AlbumRegrouper {
     return summary
   }
 
-  /// Fold an emptied legacy album's user annotations into the group-key album.
-  /// Policy: OR isFavorite, max rating, sum playCount, earliest starredDate,
-  /// latest lastTimePlayed. Run once per legacy album (the legacy is deleted
-  /// after), so playCount never double-counts across syncs.
-  private func mergeAnnotations(from legacy: Album, into target: Album) {
+  /// Fold an emptied legacy album's (or folded artist's) user annotations into the row that
+  /// replaces it. Policy: OR isFavorite, max rating, sum playCount, earliest starredDate,
+  /// latest lastTimePlayed. Run once per legacy row (the legacy is deleted after), so
+  /// playCount never double-counts across syncs.
+  private func mergeAnnotations(
+    from legacy: AbstractLibraryEntity,
+    into target: AbstractLibraryEntity
+  ) {
     if legacy.isFavorite { target.isFavorite = true }
     if legacy.rating > target.rating { target.rating = legacy.rating }
     if legacy.playCount > 0 { target.playCount = target.playCount + legacy.playCount }
