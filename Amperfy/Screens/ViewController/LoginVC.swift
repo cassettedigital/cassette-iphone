@@ -93,7 +93,7 @@ class LoginVC: UIViewController {
   // Onboarding copy label shown above the Cassette sign-in button
   fileprivate lazy var cassetteOnboardingLabel: UILabel = {
     let label = UILabel()
-    label.text = "Just keep your phone and computer on the same Wi-Fi."
+    label.text = "Just keep your \(UIDevice.cassetteDeviceWord) and computer on the same Wi-Fi."
     label.font = UIFont.cassette(.body)
     label.textColor = UIColor.cassette(.textSecondary)
     label.numberOfLines = 0
@@ -253,7 +253,7 @@ class LoginVC: UIViewController {
           mainScene.replaceMainRootViewController(vc: syncVC)
         }
       } catch {
-        let msg = "Couldn't reach your computer. Make sure your phone and computer " +
+        let msg = "Couldn't reach your computer. Make sure your \(UIDevice.cassetteDeviceWord) and computer " +
           "are on the same Wi-Fi, then try again."
         self.showErrorMsg(message: msg)
       }

@@ -103,8 +103,9 @@ extension AppDelegate {
     )
 
     builder.insertChild(UIMenu(options: .displayInline, children: [
-      UIAction(title: "Report an issue on GitHub") { _ in
-        if let url = URL(string: "https://github.com/BLeeEZ/amperfy/issues") {
+      // cassette (BUG-885): Cassette's own help, not the upstream project's issue tracker
+      UIAction(title: "Cassette Help") { _ in
+        if let url = URL(string: "https://www.cassette.digital/help") {
           UIApplication.shared.open(url)
         }
       },

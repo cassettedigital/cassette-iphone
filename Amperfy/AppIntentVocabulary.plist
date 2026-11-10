@@ -9,9 +9,9 @@
 			<string>INPlayMediaIntent</string>
 			<key>IntentExamples</key>
 			<array>
-				<string>Play the example band in Amperfy</string>
-				<string>Play playlist example in Amperfy</string>
-				<string>Play title by artist in Amperfy</string>
+				<string>Play the example band in Cassette</string>
+				<string>Play playlist example in Cassette</string>
+				<string>Play title by artist in Cassette</string>
 			</array>
 		</dict>
 	</array>

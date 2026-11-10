@@ -26,6 +26,16 @@ import os.log
 import SwiftUI
 import UIKit
 
+// MARK: - The device in a sentence
+
+extension UIDevice {
+  /// cassette (BUG-885): this device in a sentence, "phone" or "iPad", so an iPad never reads "this phone".
+  @MainActor
+  static var cassetteDeviceWord: String {
+    current.userInterfaceIdiom == .pad ? "iPad" : "phone"
+  }
+}
+
 extension MarqueeLabel {
   func applyAmperfyStyle() {
     if trailingBuffer != 30.0 {
@@ -532,7 +542,7 @@ extension UIContentUnavailableConfiguration {
   /// synced yet" on Home and in the lists).
   @MainActor
   static var cassetteOnDeviceEmpty: UIContentUnavailableConfiguration {
-    cassetteEmpty(image: .musicalNotes, title: "Nothing on this phone yet", body: nil)
+    cassetteEmpty(image: .musicalNotes, title: "Nothing on this \(UIDevice.cassetteDeviceWord) yet", body: nil)
   }
 
   /// A search of the on-device library found nothing. The title alone (phone-taste: no

@@ -207,7 +207,7 @@ struct StorageSettingsView: View {
                 )
               }
             }
-          }, header: "Albums on this phone")
+          }, header: "Albums on this \(UIDevice.cassetteDeviceWord)")
         }
       }
     }

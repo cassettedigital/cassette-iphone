@@ -200,7 +200,7 @@ struct SettingsView: View {
           }
           RootRowLabel(title: "Music", value: DeviceFormat.size(phone.bytes), chevron: false)
         }
-        RootLink("Albums on this phone") {
+        RootLink("Albums on this \(UIDevice.cassetteDeviceWord)") {
           ThisPhoneView(model: devices)
         }
       } header: {
