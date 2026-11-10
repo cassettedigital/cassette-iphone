@@ -241,7 +241,7 @@ class ArtistsVC: SingleSnapshotFetchedResultsTableViewController<ArtistMO> {
   @objc
   private func cassetteLibraryFilterChanged() {
     refreshCassetteOwnedArtistIdsIfServerMode()
-    change(sortType: sortType)
+    change(sortType: sortType, keepingPlace: true)
     updateContentUnavailable()
   }
 
@@ -283,12 +283,19 @@ class ArtistsVC: SingleSnapshotFetchedResultsTableViewController<ArtistMO> {
     setNavBarTitle(title: filterTitle)
   }
 
-  func change(sortType: ArtistElementSortType) {
+  /// `keepingPlace` is for music arriving or leaving: the old fetch lets go quietly instead of
+  /// emptying the list first, so the list keeps its scroll position (BUG-448). A new sort order
+  /// starts from the top as before.
+  func change(sortType: ArtistElementSortType, keepingPlace: Bool = false) {
     self.sortType = sortType
     appDelegate.storage.settings.user.artistsSortSetting = sortType
     (diffableDataSource as? ArtistDiffableDataSource)?.sortType = sortType
-    singleFetchedResultsController?.clearResults()
-    tableView.reloadData()
+    if keepingPlace {
+      singleFetchedResultsController?.delegate = nil
+    } else {
+      singleFetchedResultsController?.clearResults()
+      tableView.reloadData()
+    }
     fetchedResultsController = ArtistFetchedResultsController(
       coreDataCompanion: appDelegate.storage.main, account: account,
       sortType: sortType,

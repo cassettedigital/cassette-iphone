@@ -285,7 +285,11 @@ class AlbumsVC: SingleSnapshotFetchedResultsTableViewController<AlbumMO> {
   @objc
   private func cassetteLibraryFilterChanged() {
     refreshCassetteOwnedAlbumIdsIfServerMode()
-    common.change(sortType: common.sortType)
+    // Music arriving or leaving: go straight from the old albums to the new ones and keep the
+    // place, as the grid does, instead of emptying the list and landing back at the top (BUG-448).
+    if common.refreshOwnedScope() {
+      tableView.reloadData()
+    }
   }
 
   private func refreshCassetteOwnedAlbumIdsIfServerMode() {

@@ -121,8 +121,9 @@ class GenresVC: SingleFetchedResultsTableViewController<GenreMO> {
   // resultUpdateHandler (set by SingleFetchedResultsTableViewController).
   @objc
   private func cassetteLibraryFilterChanged() {
-    singleFetchedResultsController?.clearResults()
-    tableView.reloadData()
+    // The old fetch lets go quietly instead of emptying the list first, so the list keeps its
+    // place while music arrives (BUG-448).
+    singleFetchedResultsController?.delegate = nil
     fetchedResultsController = GenreFetchedResultsController(
       coreDataCompanion: appDelegate.storage.main, account: account,
       isGroupedInAlphabeticSections: true
