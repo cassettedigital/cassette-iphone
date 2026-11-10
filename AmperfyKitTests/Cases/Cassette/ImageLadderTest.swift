@@ -161,4 +161,93 @@ class ImageLadderTest: XCTestCase {
       XCTAssertFalse(CoverImageStore.isProhibitedPictureHost(url), address)
     }
   }
+
+  // MARK: The no-cover placeholder (BUG-425)
+
+  /// The strongest WCAG contrast between the tile's own colour (its corner) and any pixel in it.
+  private func strongestContrast(in image: UIImage) throws -> CGFloat {
+    let cg = try XCTUnwrap(image.cgImage)
+    let w = cg.width
+    let h = cg.height
+    var pixels = [UInt8](repeating: 0, count: w * h * 4)
+    let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+      guard let context = CGContext(
+        data: buffer.baseAddress,
+        width: w,
+        height: h,
+        bitsPerComponent: 8,
+        bytesPerRow: w * 4,
+        space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+      ) else { return false }
+      context.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+      return true
+    }
+    XCTAssertTrue(drawn)
+    func luminance(_ i: Int) -> CGFloat {
+      func lin(_ v: UInt8) -> CGFloat {
+        let c = CGFloat(v) / 255
+        return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+      }
+      return 0.2126 * lin(pixels[i]) + 0.7152 * lin(pixels[i + 1]) + 0.0722 * lin(pixels[i + 2])
+    }
+    let tile = luminance(0)
+    var best: CGFloat = 1
+    for p in 0 ..< (w * h) {
+      let l = luminance(p * 4)
+      best = max(best, (max(l, tile) + 0.05) / (min(l, tile) + 0.05))
+    }
+    return best
+  }
+
+  @MainActor
+  private func placeholder(
+    _ type: ArtworkType,
+    _ name: String?,
+    _ style: UIUserInterfaceStyle
+  )
+    -> UIImage {
+    var image = UIImage()
+    UITraitCollection(userInterfaceStyle: style).performAsCurrent {
+      image = UIImage.getGeneratedArtwork(
+        theme: .blue,
+        artworkType: type,
+        name: name,
+        size: CGSize(width: 61, height: 61),
+        scale: 1
+      )
+    }
+    return image
+  }
+
+  /// The letter (or the kind's symbol) on a no-cover tile used to be the border colour at 8%: a
+  /// blank square, a hair under 1.1:1 from the tile. It is the kit's quietest readable text now,
+  /// on the dark tile and on the light paper alike.
+  @MainActor
+  func testNoCoverPlaceholderMarkCanBeSeen() throws {
+    for style in [UIUserInterfaceStyle.dark, .light] {
+      let cases: [(ArtworkType, String?)] = [
+        (.album, "Meteora"), (.artist, "Laufey"), (.playlist, "Road"), (.song, "Hybrid"),
+        (.genre, nil), (.podcast, nil), (.radio, nil), (.album, nil),
+      ]
+      for (type, name) in cases {
+        let ratio = try strongestContrast(in: placeholder(type, name, style))
+        XCTAssertGreaterThanOrEqual(
+          ratio, 3.0,
+          "\(type) \(name ?? "no name") on \(style == .dark ? "dark" : "light")"
+        )
+      }
+    }
+  }
+
+  /// One cached picture per appearance: the light paper's tile is never handed back on the dark
+  /// one (or the reverse) just because it was drawn first.
+  @MainActor
+  func testNoCoverPlaceholderFollowsTheAppearanceItIsDrawnIn() throws {
+    let dark = try XCTUnwrap(placeholder(.album, "Appearance", .dark).pngData())
+    let light = try XCTUnwrap(placeholder(.album, "Appearance", .light).pngData())
+    XCTAssertNotEqual(dark, light)
+    XCTAssertEqual(try XCTUnwrap(placeholder(.album, "Appearance", .dark).pngData()), dark)
+    XCTAssertEqual(try XCTUnwrap(placeholder(.album, "Appearance", .light).pngData()), light)
+  }
 }

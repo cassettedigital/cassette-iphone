@@ -457,15 +457,15 @@ extension UIImage {
   // The bundled `Orange*` PNG set served Phase 3 — orange-tinted vinyl/note
   // illustrations on a warm background — but they read as generic "music
   // app" rather than Cassette. The web app handles this with a ghost-initial
-  // pattern: the entity's first letter, drawn very large in the display
-  // face at ~8% opacity over `bg3`. We mirror that here.
+  // pattern: the entity's first letter, drawn large in the display face over `bg3`. We
+  // mirror that here (BUG-425: the mark is the kit's textTertiary, not 8% of a border colour).
   //
   // For entity types that don't carry a meaningful name (genre/radio/podcast
   // as a category, or any caller that omits `name`), we fall back to the
-  // matching SF Symbol at low opacity so the surface still telegraphs what
-  // it represents.
+  // matching SF Symbol in the same mark colour so the surface still telegraphs
+  // what it represents.
   //
-  // Renders are cached on (initial-or-symbol, size, theme) so scrolling
+  // Renders are cached on (kind, initial-or-symbol, size, appearance) so scrolling
   // through Home carousels with mixed-missing artwork doesn't re-render on
   // every cell config.
 
@@ -477,6 +477,13 @@ extension UIImage {
     cache.totalCostLimit = 16 * 1024 * 1024
     return cache
   }()
+
+  /// The mark on a no-cover placeholder: the first letter of an album, artist or playlist, or
+  /// the kind's symbol (BUG-425). The kit's `textTertiary` on `surfaceElevated`, the same pair
+  /// the website draws its cover placeholder in (ink3 on bg3), and the quietest text the app
+  /// treats as readable (4.6:1 on the dark tile). It used to be the border colour at 8%, under
+  /// 2/255 away from the tile: a blank square.
+  public static var placeholderMark: UIColor { UIColor.cassette(.textTertiary) }
 
   public static func getGeneratedArtwork(
     theme: ThemePreference,
@@ -490,15 +497,21 @@ extension UIImage {
     let initial = ghostInitial(for: name, artworkType: artworkType)
     let format = UIGraphicsImageRendererFormat.default()
     if let scale { format.scale = scale }
-    // The phone's ghost is deliberately quiet; CarPlay passes a legible `markColor` (BUG-425).
-    let initialColor = markColor ?? UIColor.cassette(.hairline).withAlphaComponent(0.08)
-    let symbolColor = markColor ?? UIColor.cassette(.hairline).withAlphaComponent(0.1)
-    // cassette (BUG-425): the key carries the artwork type, the mark and the render scale. Keyed
-    // on the initial and size alone, every nameless genre, podcast, radio and song placeholder
-    // shared `•|300x300` and showed whichever symbol was drawn first.
-    let markKey = markColor.map { String(describing: $0) } ?? "ghost"
+    // The tile and its mark follow the appearance they are drawn in, and the key says which
+    // that was: a light-paper render is never handed back on the dark one (or the reverse),
+    // which a legible mark would show up as a dark tile on a light page.
+    let traits = UITraitCollection.current
+    let tileColor = UIColor.cassette(.surfaceElevated).resolvedColor(with: traits)
+    // CarPlay passes its own legible `markColor` (BUG-425); everything else takes the kit's.
+    let mark = (markColor ?? Self.placeholderMark).resolvedColor(with: traits)
+    let initialColor = mark
+    let symbolColor = mark
+    // cassette (BUG-425): the key carries the artwork type, the mark, the appearance and the
+    // render scale. Keyed on the initial and size alone, every nameless genre, podcast, radio
+    // and song placeholder shared `•|300x300` and showed whichever symbol was drawn first.
+    let markKey = markColor.map { String(describing: $0.resolvedColor(with: traits)) } ?? "kit"
     let cacheKey = NSString(
-      string: "\(artworkType)|\(initial ?? "•")|\(Int(size.width))x\(Int(size.height))@\(format.scale)|\(markKey)"
+      string: "\(artworkType)|\(initial ?? "•")|\(Int(size.width))x\(Int(size.height))@\(format.scale)|\(markKey)|\(traits.userInterfaceStyle.rawValue)"
     )
     if let cached = ghostArtworkCache.object(forKey: cacheKey) {
       return cached
@@ -508,7 +521,7 @@ extension UIImage {
     let image = renderer.image { ctx in
       let cg = ctx.cgContext
       let rect = CGRect(origin: .zero, size: size)
-      cg.setFillColor(UIColor.cassette(.surfaceElevated).cgColor)
+      cg.setFillColor(tileColor.cgColor)
       cg.fill(rect)
 
       if let initial {
