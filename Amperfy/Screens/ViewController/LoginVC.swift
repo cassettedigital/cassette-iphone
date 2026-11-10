@@ -253,10 +253,12 @@ class LoginVC: UIViewController {
           mainScene.replaceMainRootViewController(vc: syncVC)
         }
       } catch {
-        // the usual causes: another network, or Local Network access declined when iOS asked (BUG-888)
-        let msg = "Couldn't reach your computer. Make sure your \(UIDevice.cassetteDeviceWord) and computer " +
-          "are on the same Wi-Fi, and that Cassette may use your local network (Settings > Cassette > " +
-          "Local Network), then try again."
+        // Only a computer that answered and turned the login down lands here: one out of reach
+        // (another network, Local Network declined) lets sign-in finish (authenticate), so the
+        // old Wi-Fi and Local Network advice was wrong here (BUG-972). What fixes a refused
+        // login is not known for sure (the computer writes it into its music server only when
+        // it pairs), so the message says what happened and points at the help link below.
+        let msg = "Your computer didn't accept the sign-in. Try again, or tap Having trouble? below."
         self.showErrorMsg(message: msg)
       }
     }
