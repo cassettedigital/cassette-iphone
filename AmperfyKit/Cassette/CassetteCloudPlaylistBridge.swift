@@ -486,10 +486,13 @@ public enum CassetteCloudPlaylistBridge {
     let playlistObjectId = playlist.managedObject.objectID
     try await storage.async.perform { asyncCompanion in
       let account = asyncCompanion.library.getAccount(managedObjectId: accountObjectId)
-      let playlistAsync = Playlist(
-        library: asyncCompanion.library,
-        managedObject: asyncCompanion.context.object(with: playlistObjectId) as! PlaylistMO
-      )
+      // The list sync can delete this playlist while its detail is on the way (deleted on
+      // the web or another device). A forced fetch of a deleted row crashed on the first
+      // write; a row that is gone now leaves nothing to fill (BUG-891).
+      guard let playlistMO = try? asyncCompanion.context.existingObject(with: playlistObjectId)
+        as? PlaylistMO, !playlistMO.isDeleted
+      else { return }
+      let playlistAsync = Playlist(library: asyncCompanion.library, managedObject: playlistMO)
       playlistAsync.name = remote.name
       // cassette (cover unification): user pick wins; else the server preset (bundled).
       // phone-taste: the detail response omits derived_cover_url (the web's [id] route
