@@ -372,15 +372,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // related).
   }
 
-  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-    os_log("openURLContexts", log: self.log, type: .info)
-    guard appDelegate.isNormalInteraction else {
-      return
-    }
-    for URLContext in URLContexts {
-      _ = appDelegate.intentManager.handleIncoming(url: URLContext.url)
-    }
-  }
+  // The cassette:// scheme only carries sign-in back from the browser, and the sign-in sheet
+  // catches that itself. The old x-callback remote-control links (play, pause, search and play,
+  // and so on) are gone; Siri and Shortcuts do the same through the app's own actions.
 
   // This is the NSUserActivity that will be used to restore state when the Scene reconnects.
   // It can be the same activity used for handoff or spotlight, or it can be a separate activity

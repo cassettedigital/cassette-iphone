@@ -367,7 +367,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   func startManagerAfterSync() {
     os_log("Start background manager after sync", log: self.log, type: .info)
     configureMainMenu()
-    intentManager.registerXCallbackURLs()
     if !isAlreadyRegisteredToPlayer {
       isAlreadyRegisteredToPlayer = true
       player.addNotifier(notifier: self)
@@ -378,7 +377,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   func startManagerForNormalOperation() {
     os_log("Start background manager for normal operation", log: self.log, type: .info)
     configureMainMenu()
-    intentManager.registerXCallbackURLs()
     for accountInfo in storage.settings.accounts.allAccounts {
       getMeta(accountInfo).startManagerForNormalOperation(player: appDelegate.player)
     }
