@@ -140,3 +140,19 @@ struct SettingsButtonRow: View {
     }.foregroundColor(actionType.foregroundColor)
   }
 }
+
+// MARK: - SettingsMenuValue
+
+/// The value a Settings menu row shows (Download quality, the equalizer's preset), in the face
+/// the Settings front page gives its values (DM Mono, ink2), so a sub-page's choices read like
+/// the front page's rather than in the system font (BUG-972).
+struct SettingsMenuValue: View {
+  let text: String
+
+  var body: some View {
+    Text(text)
+      .font(.cassette(.caption))
+      .foregroundStyle(Color.cassette(.textSecondary))
+      .lineLimit(1)
+  }
+}

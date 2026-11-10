@@ -64,7 +64,7 @@ struct EqualizerSettingsView: View {
 
           if settings.isEqualizerEnabled {
             SettingsRow(title: "Preset") {
-              Menu(settings.activeEqualizerSetting.description) {
+              Menu {
                 Button(EqualizerSetting.off.description) {
                   settings.activeEqualizerSetting = EqualizerSetting.off
                 }
@@ -73,14 +73,16 @@ struct EqualizerSettingsView: View {
                     settings.activeEqualizerSetting = eqSetting
                   }
                 }
+              } label: {
+                SettingsMenuValue(text: settings.activeEqualizerSetting.description)
               }
             }
           }
         })
 
         SettingsSection(content: {
-          SettingsRow(title: "Edit") {
-            Menu((eqSettingToEdit != nil) ? eqSettingNameSaved : "Choose a preset") {
+          SettingsRow(title: "Edit a preset") {
+            Menu {
               ForEach(settings.equalizerSettings, id: \.self) { eqSetting in
                 Button(eqSetting.description) {
                   eqSettingToEdit = eqSetting
@@ -99,6 +101,8 @@ struct EqualizerSettingsView: View {
                 eqSettingNameSaved = newEQ.name
                 eqSettingGains = newEQ.gains.compactMap { CGFloat($0) }
               }
+            } label: {
+              SettingsMenuValue(text: (eqSettingToEdit != nil) ? eqSettingNameSaved : "Choose")
             }
           }
 

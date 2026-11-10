@@ -80,9 +80,11 @@ struct PlaybackSettingsView: View {
         SettingsSection(
           content: {
             SettingsRow(title: "Download quality") {
-              Menu(downloadQualityLabel(downloadQuality)) {
+              Menu {
                 Button("Lossless (FLAC)") { setDownloadQuality(.raw) }
                 Button("High (MP3)") { setDownloadQuality(.mp3) }
+              } label: {
+                SettingsMenuValue(text: downloadQualityLabel(downloadQuality))
               }
             }
           },
