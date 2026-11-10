@@ -275,6 +275,11 @@ class PlaylistDetailVC: SingleSnapshotFetchedResultsTableViewController<Playlist
     // A page nobody can see has no shelf to update; it recomputes on its next appearance.
     NotificationCenter.default.removeObserver(self, name: .cassetteMoodIndexReady, object: nil)
     NotificationCenter.default.removeObserver(self, name: .cassetteLibraryMoodsChanged, object: nil)
+    NotificationCenter.default.removeObserver(
+      self,
+      name: CassetteCloudPlaylistBridge.coverDidLand,
+      object: nil
+    )
   }
 
   override func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -411,6 +416,23 @@ class PlaylistDetailVC: SingleSnapshotFetchedResultsTableViewController<Playlist
       center.removeObserver(self, name: name, object: nil)
       center.addObserver(self, selector: #selector(moodIndexChanged), name: name, object: nil)
     }
+    // A pick slower than lightUpFromCover's few retries lights the page when it lands
+    // (BUG-461). Removed with the mood observers in viewDidDisappear.
+    let coverLanded = CassetteCloudPlaylistBridge.coverDidLand
+    center.removeObserver(self, name: coverLanded, object: nil)
+    center.addObserver(
+      self,
+      selector: #selector(playlistCoverLanded(_:)),
+      name: coverLanded,
+      object: nil
+    )
+  }
+
+  @objc
+  private func playlistCoverLanded(_ notification: Notification) {
+    guard notification.object as? String == playlist.id else { return }
+    coverRetryCount = 0
+    lightUpFromCover()
   }
 
   @objc

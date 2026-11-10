@@ -267,6 +267,11 @@ public enum CassetteCloudPlaylistBridge {
     return image
   }
 
+  /// Posted on the main thread when a playlist's picked cover lands on the phone; the
+  /// notification's object is the playlist id. A surface lit from the preset while the pick
+  /// was downloading lights again from the pick (the playlist page, the Resume card; BUG-461).
+  nonisolated public static let coverDidLand = Notification.Name("CassettePlaylistCoverDidLand")
+
   /// Persist freshly-downloaded pick bytes so the next cold/offline launch reads local.
   nonisolated public static func storeMaterializedCover(
     _ data: Data,
@@ -277,6 +282,9 @@ public enum CassetteCloudPlaylistBridge {
     do {
       try data.write(to: file, options: .atomic)
       UserDefaults.standard.set(url, forKey: materializedUrlKey(playlistId))
+      DispatchQueue.main.async {
+        NotificationCenter.default.post(name: coverDidLand, object: playlistId)
+      }
     } catch {
       // Best-effort cache — a failed write just means the next launch re-fetches.
     }

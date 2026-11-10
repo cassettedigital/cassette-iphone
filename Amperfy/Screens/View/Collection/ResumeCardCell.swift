@@ -167,11 +167,34 @@ final class ResumeCardCell: BasicCollectionCell {
   override init(frame: CGRect) {
     super.init(frame: frame)
     setupSubviews()
+    observeCoverLanding()
   }
 
   required init?(coder: NSCoder) {
     super.init(coder: coder)
     setupSubviews()
+    observeCoverLanding()
+  }
+
+  /// The playlist the card shows and its artwork setting, so a picked cover that lands
+  /// after the card lit from the preset lights it again at once (BUG-461), rather than at
+  /// Home's next redraw.
+  private var shownPlaylist: (playlist: Playlist, preference: ArtworkDisplayPreference)?
+
+  private func observeCoverLanding() {
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(playlistCoverLanded(_:)),
+      name: CassetteCloudPlaylistBridge.coverDidLand,
+      object: nil
+    )
+  }
+
+  @objc
+  private func playlistCoverLanded(_ notification: Notification) {
+    guard let shown = shownPlaylist, notification.object as? String == shown.playlist.id
+    else { return }
+    light(from: Self.coverSource(of: shown.playlist, artworkPreference: shown.preference))
   }
 
   override func prepareForReuse() {
@@ -179,6 +202,7 @@ final class ResumeCardCell: BasicCollectionCell {
     onPlayTapped = nil
     setChecking(false)
     displayedContainerID = nil
+    shownPlaylist = nil
     coverKey = nil
     tintToken = UUID()
     glowView.clear()
@@ -284,6 +308,7 @@ final class ResumeCardCell: BasicCollectionCell {
     accessibilityLabel = ["Resume \(container.name)", resumeLine]
       .compactMap { $0 }
       .joined(separator: ", ")
+    shownPlaylist = (container as? Playlist).map { ($0, setting.artworkDisplayPreference) }
     light(from: Self.coverSource(
       of: container,
       artworkPreference: setting.artworkDisplayPreference
