@@ -461,6 +461,19 @@ extension CarPlaySceneDelegate {
     return session.moodTiles.isEmpty ? nil : session.moodRow
   }
 
+  /// BUG-460: covers a record tile was waiting for have landed. The row's tiles are rebuilt
+  /// in place when the row is on screen (no Home redraw, which a cover burst on the first
+  /// drive would repeat, BUG-435); Home is redrawn only when the row isn't there yet.
+  func redrawMoodRowForArrivedCovers() {
+    guard interfaceController != nil else { return }
+    session.moodSignature = nil
+    if session.moodRow != nil {
+      _ = makeMoodRow()
+    } else {
+      updateHomeSections()
+    }
+  }
+
   /// The Lately tile when the mix has songs and four of its lead albums have a cover on disk
   /// (decoded here, once per signature), then Home's other made-for-you playlists: a mood
   /// mix as its drawn cover once that is on disk (its colour and name until then), the others
@@ -470,14 +483,18 @@ extension CarPlaySceneDelegate {
   private func rebuildMoodTiles() {
     var tiles = [CarMoodTile]()
     var coversByTile = [String: [UIImage]]()
+    var awaited = Set<String>()
     let preference = getPreference(activeAccountInfo).artworkDisplayPreference
     func fourCovers(_ albums: [Album]) -> [UIImage]? {
-      let covers = albums.compactMap {
-        LibraryEntityImage.coverImage(
-          libraryEntity: $0,
+      let covers = albums.compactMap { album -> UIImage? in
+        let cover = LibraryEntityImage.coverImage(
+          libraryEntity: album,
           artworkDisplayPreference: preference,
           useCache: false
         )
+        // Not on the phone yet: draw the row again when it lands (BUG-460).
+        if cover == nil, let artworkID = album.artwork?.uniqueID { awaited.insert(artworkID) }
+        return cover
       }
       return covers.count >= Self.latelyCoverCount ? Array(covers.prefix(Self.latelyCoverCount)) : nil
     }
@@ -500,6 +517,7 @@ extension CarPlaySceneDelegate {
     }
     session.moodTiles = tiles
     session.moodCovers = coversByTile
+    session.moodAwaitedArtworkIDs = awaited
   }
 
   /// A tile's picture and title. Lately and the other record playlists: their records in a

@@ -452,6 +452,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     /// signature (the Made for You list reuses them).
     var moodCovers: [String: [UIImage]] = [:]
     var moodSignature: String?
+    /// The artwork ids of the record tiles' lead albums whose covers were not on the phone
+    /// when the row was drawn. When one of them lands, the row is drawn again, so the Lately
+    /// tile shows as its covers arrive instead of at Home's next recompute (BUG-460).
+    var moodAwaitedArtworkIDs: Set<String> = []
+    var moodRedrawPending = false
     /// The rows' order and names as last rendered, so a change of name alone gets through the
     /// early-out (Weekday Evenings becomes Weekday Nights with the same albums; the reaching
     /// row turns from one shelf to another).
@@ -534,6 +539,17 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     guard let downloadNotification = DownloadNotification.fromNotification(notification)
     else { return }
     guard let templates = interfaceController?.templates else { return }
+
+    // BUG-460: a cover a record tile was waiting for; draw the Made for You row again,
+    // once for a burst of covers (redrawMoodRowForArrivedCovers).
+    if session.moodAwaitedArtworkIDs.contains(downloadNotification.id), !session.moodRedrawPending {
+      session.moodRedrawPending = true
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+        guard let self else { return }
+        session.moodRedrawPending = false
+        redrawMoodRowForArrivedCovers()
+      }
+    }
 
     // refresh Home image rows
     // cassette (BUG-338): the pushed shelf detail is a plain CPListTemplate of library rows
