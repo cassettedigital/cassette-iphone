@@ -113,14 +113,25 @@ class LoginVC: UIViewController {
     var config = UIButton.Configuration.plain()
     config.baseForegroundColor = UIColor.cassette(.textTertiary)
     config.contentInsets = .zero
+    // cassette (BUG-888): a release build offers Help, not the Subsonic server form (whose playlist edits
+    // rewrite the server's and can crash); a development build keeps manual setup for testing.
+    #if DEBUG
+      let title = "Having trouble? Use manual setup"
+    #else
+      let title = "Having trouble? Get help"
+    #endif
     config.attributedTitle = AttributedString(
-      "Having trouble? Use manual setup",
+      title,
       attributes: AttributeContainer([
         .font: UIFont.cassette(.caption),
       ])
     )
     let button = UIButton(configuration: config)
-    button.addTarget(self, action: #selector(Self.manualSetupPressed), for: .touchUpInside)
+    #if DEBUG
+      button.addTarget(self, action: #selector(Self.manualSetupPressed), for: .touchUpInside)
+    #else
+      button.addTarget(self, action: #selector(Self.signInHelpPressed), for: .touchUpInside)
+    #endif
     return button
   }()
 
@@ -253,14 +264,22 @@ class LoginVC: UIViewController {
           mainScene.replaceMainRootViewController(vc: syncVC)
         }
       } catch {
+        // the usual causes: another network, or Local Network access declined when iOS asked (BUG-888)
         let msg = "Couldn't reach your computer. Make sure your \(UIDevice.cassetteDeviceWord) and computer " +
-          "are on the same Wi-Fi, then try again."
+          "are on the same Wi-Fi, and that Cassette may use your local network (Settings > Cassette > " +
+          "Local Network), then try again."
         self.showErrorMsg(message: msg)
       }
     }
   }
 
   @IBAction
+  func signInHelpPressed() {
+    guard let url = URL(string: "https://www.cassette.digital/help/your-iphone") else { return }
+    UIApplication.shared.open(url)
+  }
+
+  @objc
   func manualSetupPressed() {
     cassetteSignInContainer.isHidden = true
     formGlassContainer.isHidden = false
