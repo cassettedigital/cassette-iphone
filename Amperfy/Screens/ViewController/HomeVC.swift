@@ -1067,10 +1067,17 @@ final class HomeVC: UICollectionViewController {
     sharedHome.createFetchController()
   }
 
+  /// Edit Home is put away for now (founder, 2026-11-10: "love the idea, but don't need to
+  /// tune it yet"). Since One Home the cloud orders Home, and the editor only changed the
+  /// phone's stand-in rows, so it did almost nothing a person could see. The editor stays
+  /// as it is; turning this on brings the menu entry back (board: BUG-445, a planned feature).
+  static let offersEditHome = false
+
   /// cassette Patch 035: builds the Home tab's own entry in the account-button menu,
   /// "Edit Home", which now sits beside Settings (the account menu places it). Other
   /// tabs pass no extras and see the unmodified account menu.
   private func makeHomeMenuExtras() -> [UIMenuElement] {
+    guard Self.offersEditHome else { return [] }
     let editHome = UIAction(
       title: "Edit Home",
       image: CassetteIcon.adjust.uiImage,
