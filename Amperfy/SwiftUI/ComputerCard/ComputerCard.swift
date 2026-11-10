@@ -29,7 +29,7 @@ import AmperfyKit
 import SwiftUI
 
 struct ComputerCard: View {
-  /// Where the computer and this phone stand, in the card's six states.
+  /// Where the computer and this phone stand, in the card's seven states.
   enum Phase: String, CaseIterable, Sendable {
     /// Music on its way to the phone.
     case syncing
@@ -37,6 +37,8 @@ struct ComputerCard: View {
     case gettingReady
     /// The computer can't be reached.
     case outOfReach
+    /// The first fill ran out of room on this phone with albums still waiting (BUG-883).
+    case phoneFull
     /// The computer has no music in Cassette.
     case noMusic
     /// The account syncs only chosen music, and nothing is chosen for this phone (BUG-898).
@@ -68,6 +70,7 @@ struct ComputerCard: View {
       case .syncing: return "Syncing"
       case .gettingReady: return "Getting ready"
       case .outOfReach: return "Out of reach"
+      case .phoneFull: return "Phone full"
       case .noMusic: return "No music yet"
       case .nothingChosen: return "Nothing chosen"
       case .notSetUp: return "Not set up"
@@ -80,6 +83,7 @@ struct ComputerCard: View {
         return "\(onPhone) of \(max(total, onPhone)) \(max(total, onPhone) == 1 ? "album" : "albums") on this phone"
       case .gettingReady: return "Reading your library"
       case .outOfReach: return "New music arrives when it's back"
+      case .phoneFull: return "Pick the music for this phone in Cassette on your computer"
       case .noMusic: return "Add music to Cassette on your computer"
       case .nothingChosen: return "Pick the music for this phone in Cassette on your computer"
       case .notSetUp: return "Your music plays from Cassette on your computer"
@@ -91,7 +95,8 @@ struct ComputerCard: View {
       switch phase {
       case .syncing, .gettingReady, .outOfReach: return nil
       case .noMusic: return Action(title: "How to add music", path: "/help/adding-music")
-      case .nothingChosen: return Action(title: "How to choose music", path: "/help/choose-albums-for-phone")
+      case .nothingChosen, .phoneFull:
+        return Action(title: "How to choose music", path: "/help/choose-albums-for-phone")
       case .notSetUp: return Action(title: "Get it for your computer", path: "/apps")
       }
     }
@@ -102,7 +107,7 @@ struct ComputerCard: View {
       case .gettingReady: return .skeleton
       case .syncing: return covers.isEmpty ? .skeleton : .covers
       case .outOfReach: return covers.isEmpty ? .skeleton : .still
-      case .noMusic, .nothingChosen, .notSetUp: return nil
+      case .noMusic, .nothingChosen, .notSetUp, .phoneFull: return nil
       }
     }
 

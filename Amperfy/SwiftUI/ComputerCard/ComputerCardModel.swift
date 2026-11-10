@@ -41,6 +41,8 @@ struct ComputerCardFacts: Equatable, Sendable {
   var outOfReach: Bool
   /// Music is on its way (downloads in flight or albums still waiting).
   var arriving: Bool
+  /// Albums are waiting and the last download had no room on this phone (BUG-883).
+  var phoneFull = false
   /// Albums on this phone; nil until the first read.
   var onPhone: Int?
   /// The phone's first sync has finished.
@@ -59,6 +61,7 @@ struct ComputerCardFacts: Equatable, Sendable {
     guard let onPhone else { return nil }
     if onPhone > 0, firstSyncDone || !arriving { return nil }
     if outOfReach { return .outOfReach }
+    if arriving, phoneFull { return .phoneFull }
     if arriving { return .syncing }
     guard let computerAlbums, computerHasRead else { return .gettingReady }
     if computerAlbums == 0 { return .noMusic }
@@ -199,6 +202,7 @@ final class ComputerCardModel {
       isPaired: serverUrl != nil,
       outOfReach: state == .outOfReach,
       arriving: arriving,
+      phoneFull: CassetteSyncStatus.isPhoneFull && CassetteSyncStatus.pendingAlbums > 0,
       onPhone: onPhone,
       firstSyncDone: firstSyncDone(onPhone: onPhone, arriving: arriving),
       computerAlbums: summary?.albums,
@@ -345,7 +349,9 @@ final class ComputerCardModel {
         }
       }
       tick = Int(Date().timeIntervalSince(tourStartedAt) / 6)
-      let order: [ComputerCard.Phase] = [.gettingReady, .syncing, .outOfReach, .noMusic, .nothingChosen, .notSetUp]
+      let order: [ComputerCard.Phase] = [
+        .gettingReady, .syncing, .outOfReach, .phoneFull, .noMusic, .nothingChosen, .notSetUp,
+      ]
       phase = order[tick % order.count]
     } else if let named = ComputerCard.Phase(rawValue: forced) {
       phase = named
