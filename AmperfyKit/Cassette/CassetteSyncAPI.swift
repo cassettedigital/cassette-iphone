@@ -159,7 +159,9 @@ public enum CassetteSyncStatus {
       case .inSync: return "in sync"
       case .syncing: return "syncing"
       case .outOfReach: return "out of reach"
-      case .notPaired: return "not paired"
+      // The Home card's words ("Your computer / Not set up"): "paired" named a step a
+      // newcomer never sees.
+      case .notPaired: return "not set up"
       case .unknown: return ""
       }
     }
@@ -207,9 +209,10 @@ public enum CassetteSyncStatus {
   }
 
   /// The avatar menu's line under the person's name: "Michaels MacBook Pro · in sync",
-  /// just the Mac's name until its state is known, or "Not paired to a computer".
+  /// just the Mac's name until its state is known, or "Computer not set up" (the Home card's
+  /// words, short enough for one line under the name).
   public static func menuLine(hubName: String?, state: MacState) -> String {
-    if state == .notPaired { return "Not paired to a computer" }
+    if state == .notPaired { return "Computer not set up" }
     let hub = hubName ?? fallbackHubName
     guard let answer = state.answer else { return hub }
     return "\(hub) · \(answer)"

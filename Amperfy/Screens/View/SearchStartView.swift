@@ -66,6 +66,8 @@ final class SearchStartView: UIView {
   private let genresBlock = UIView()
   private let genresGrid = UIStackView()
   private var genreRowCount = 0
+  /// The chips by title, so one can be hidden while it has nothing to act on.
+  private var chipsByTitle = [String: UIButton]()
 
   init(starts: [Start]) {
     super.init(frame: CGRect(
@@ -134,8 +136,16 @@ final class SearchStartView: UIView {
     ])
 
     for start in starts {
-      stack.addArrangedSubview(Self.chip(for: start))
+      let chip = Self.chip(for: start)
+      chipsByTitle[start.title] = chip
+      stack.addArrangedSubview(chip)
     }
+  }
+
+  /// Shows or hides the chip titled `title` (Shuffle all, while the phone holds no music).
+  func setStart(_ title: String, hidden: Bool) {
+    guard let chip = chipsByTitle[title], chip.isHidden != hidden else { return }
+    chip.isHidden = hidden
   }
 
   required init?(coder: NSCoder) {

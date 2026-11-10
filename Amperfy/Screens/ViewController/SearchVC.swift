@@ -1278,7 +1278,7 @@ class SearchVC: BasicTableViewController {
       self?.navigationController?.pushViewController(vc, animated: true)
     }
     return SearchStartView(starts: [
-      .init(title: "Shuffle all", icon: .shuffle) { [weak self] in self?.shuffleAll() },
+      .init(title: Self.shuffleAllTitle, icon: .shuffle) { [weak self] in self?.shuffleAll() },
       .init(title: "Albums", icon: .album) {
         push(AppStoryboard.Main.createAlbumsVC(account: account, style: .table, category: .all))
       },
@@ -1423,12 +1423,16 @@ class SearchVC: BasicTableViewController {
         return
       }
       self.ownedIDs = owned
+      // Nothing on the phone yet: Shuffle all would do nothing, so it isn't offered.
+      self.startView.setStart(Self.shuffleAllTitle, hidden: owned.songs.isEmpty)
       guard !self.isSearchActive else { return }
       self.reloadHistory()
       self.updateDataSource(animated: false)
       self.refreshOptionsButton()
     }
   }
+
+  private static let shuffleAllTitle = "Shuffle all"
 
   /// Shuffles the music on this phone (OneTapPlay's rule: the whole library in Server Mode,
   /// only cached songs while offline), capped so a big library does not build a queue of

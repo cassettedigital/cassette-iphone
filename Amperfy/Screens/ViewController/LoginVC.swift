@@ -90,17 +90,6 @@ class LoginVC: UIViewController {
     return button
   }()
 
-  // Onboarding copy label shown above the Cassette sign-in button
-  fileprivate lazy var cassetteOnboardingLabel: UILabel = {
-    let label = UILabel()
-    label.text = "Just keep your \(UIDevice.cassetteDeviceWord) and computer on the same Wi-Fi."
-    label.font = UIFont.cassette(.body)
-    label.textColor = UIColor.cassette(.textSecondary)
-    label.numberOfLines = 0
-    label.textAlignment = .center
-    return label
-  }()
-
   // Activity indicator while fetching credentials from Cassette
   fileprivate lazy var cassetteActivityIndicator: UIActivityIndicatorView = {
     let indicator = UIActivityIndicatorView(style: .medium)
@@ -752,26 +741,26 @@ class LoginVC: UIViewController {
 
     // cassette Patch 013: Cassette sign-in section
     cassetteSignInContainer.translatesAutoresizingMaskIntoConstraints = false
-    cassetteOnboardingLabel.translatesAutoresizingMaskIntoConstraints = false
     cassetteSignInButton.translatesAutoresizingMaskIntoConstraints = false
     cassetteActivityIndicator.translatesAutoresizingMaskIntoConstraints = false
     manualSetupButton.translatesAutoresizingMaskIntoConstraints = false
 
-    cassetteSignInContainer.addSubview(cassetteOnboardingLabel)
     cassetteSignInContainer.addSubview(cassetteSignInButton)
     cassetteSignInContainer.addSubview(cassetteActivityIndicator)
     cassetteSignInContainer.addSubview(manualSetupButton)
+    // The line above the button ("Just keep your phone and computer on the same Wi-Fi.") is
+    // gone: since 028da529 sign-in finishes whether or not the computer can be reached, and
+    // an account with no computer signs in too, so it told newcomers about a step that
+    // doesn't exist.
     NSLayoutConstraint.activate([
-      cassetteOnboardingLabel.topAnchor.constraint(equalTo: cassetteSignInContainer.topAnchor),
-      cassetteOnboardingLabel.leadingAnchor
-        .constraint(equalTo: cassetteSignInContainer.leadingAnchor),
-      cassetteOnboardingLabel.trailingAnchor
-        .constraint(equalTo: cassetteSignInContainer.trailingAnchor),
-
-      cassetteSignInButton.topAnchor.constraint(
-        equalTo: cassetteOnboardingLabel.bottomAnchor,
-        constant: 24
-      ),
+      cassetteSignInButton.topAnchor.constraint(equalTo: cassetteSignInContainer.topAnchor),
+      // The section's width was the line's; it now asks for the 400 cap and gives way to the
+      // side margins.
+      {
+        let width = cassetteSignInContainer.widthAnchor.constraint(equalToConstant: 400)
+        width.priority = .defaultHigh
+        return width
+      }(),
       cassetteSignInButton.centerXAnchor.constraint(equalTo: cassetteSignInContainer.centerXAnchor),
       cassetteSignInButton.widthAnchor.constraint(equalToConstant: 240),
       cassetteSignInButton.heightAnchor.constraint(equalToConstant: 48),
