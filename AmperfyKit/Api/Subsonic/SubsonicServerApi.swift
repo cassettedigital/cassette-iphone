@@ -198,11 +198,30 @@ final class SubsonicServerApi: URLCleanser, Sendable {
     return clientApiVersion.wrappedValue!
   }
 
+  /// Music-server calls the phone never makes. Navidrome answers these from Last.fm when its
+  /// agents are on (similar songs, artist and album info, top songs), and no Last.fm, ever:
+  /// its licence doesn't allow a commercial product. Every server address is built in
+  /// `createBasicApiUrlComponent`, which refuses these, so no screen can ask for one (BUG-891).
+  static let prohibitedActions: Set<String> = [
+    "getsimilarsongs", "getsimilarsongs2",
+    "getartistinfo", "getartistinfo2",
+    "getalbuminfo", "getalbuminfo2",
+    "gettopsongs",
+  ]
+
+  static func isProhibitedAction(_ action: String) -> Bool {
+    prohibitedActions.contains(action.lowercased())
+  }
+
   private func createBasicApiUrlComponent(
     forAction: String,
     providedCredentials: LoginCredentials? = nil
   )
     -> URLComponents? {
+    guard !Self.isProhibitedAction(forAction) else {
+      os_log("Refused a prohibited server call: %s", log: log, type: .error, forAction)
+      return nil
+    }
     let localCredentials = providedCredentials != nil ? providedCredentials : credentials
       .wrappedValue
     guard let hostname = localCredentials?.activeBackendServerUrl,
@@ -958,18 +977,6 @@ final class SubsonicServerApi: URLCleanser, Sendable {
         forAction: apiFavoriteAction
       )
       urlComp.addQueryItem(name: "artistId", value: artistId)
-      return try self.createUrl(from: urlComp)
-    }
-  }
-
-  public func requestSimilarSongs(id: String, count: Int = 50) async throws -> APIDataResponse {
-    try await request { version in
-      var urlComp = try self.createAuthApiUrlComponent(
-        version: version,
-        forAction: "getSimilarSongs2",
-        id: id
-      )
-      urlComp.addQueryItem(name: "count", value: count)
       return try self.createUrl(from: urlComp)
     }
   }

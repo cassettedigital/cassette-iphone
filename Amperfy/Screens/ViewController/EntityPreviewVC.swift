@@ -72,7 +72,6 @@ class EntityPreviewActionBuilder {
   private var isGoToSiteUrl = false
   private var isShowPodcastDetails = false
   private var isShowSongDetails = false
-  private var isInstantMix = false
   /// cassette: "Start Mixtape from this track" — POST /api/mixtape/radio,
   /// then open the mixtape preview sheet (never auto-plays). Same online-only
   /// gating as the retired Instant Mix, which this replaces in spirit.
@@ -282,7 +281,6 @@ class EntityPreviewActionBuilder {
     isGoToSiteUrl = false
     isShowPodcastDetails = false
     isShowSongDetails = true
-    isInstantMix = appDelegate.storage.settings.user.isOnlineMode
     // cassette (BUG-348): "Start Mixtape" only for accounts in the Mixtape beta;
     // the radio API answers 404 otherwise.
     isStartMixtape = appDelegate.storage.settings.user.isOnlineMode &&
@@ -474,67 +472,10 @@ class EntityPreviewActionBuilder {
     }
   }
 
-  private func createInstantMixAction() -> UIAction {
-    UIAction(title: "Instant Mix", image: .instantMix) { [weak self] action in
-      guard let self = self,
-            let song = (entityContainer as? AbstractPlayable)?.asSong
-      else { return }
-
-      Task { @MainActor in
-        await self.createAndPlayInstantMix(for: song)
-      }
-    }
-  }
-
-  private func createAndPlayInstantMix(for song: Song) async {
-    do {
-      // Get the library syncer for the song's account
-      guard let account = song.account else {
-        appDelegate.eventLogger.error(
-          topic: "Instant Mix",
-          statusCode: .commonError,
-          message: "Song has no account",
-          displayPopup: true
-        )
-        return
-      }
-
-      let librarySyncer = appDelegate.getMeta(account.info).librarySyncer
-
-      // Fetch similar songs from backend
-      let similarSongs = try await librarySyncer.requestSimilarSongs(song: song, count: 99)
-
-      if similarSongs.isEmpty {
-        appDelegate.eventLogger.info(
-          topic: "Instant Mix",
-          message: "No similar songs found",
-          displayPopup: true
-        )
-        return
-      }
-
-      // Create playlist: seed song + similar songs
-      var allSongs = [song] + similarSongs
-
-      // Create play context and start playing
-      let context = PlayContext(name: "Instant Mix: \(song.title)", playables: allSongs)
-      appDelegate.player.play(context: context)
-
-      appDelegate.eventLogger.info(
-        topic: "Instant Mix",
-        message: "Playing \(allSongs.count == 1 ? "1 song" : "\(allSongs.count) songs") like \(song.title)",
-        displayPopup: true
-      )
-
-    } catch {
-      appDelegate.eventLogger.report(topic: "Instant Mix", error: error)
-    }
-  }
-
   // cassette: "Start Mixtape from this track" — the live replacement for
-  // Instant Mix above, same async-fetch shape, but backed by the cloud
-  // mixtape engine (POST /api/mixtape/radio) instead of Subsonic similar-
-  // songs, and opens the preview sheet rather than playing immediately —
+  // the retired Instant Mix (removed with its similar-songs call, BUG-891),
+  // backed by the cloud mixtape engine (POST /api/mixtape/radio) instead of
+  // Subsonic similar-songs, and opens the preview sheet rather than playing immediately —
   // generating a mixtape must never yank audio out from under whatever's
   // already playing.
   private func createMixtapeAction() -> UIAction {

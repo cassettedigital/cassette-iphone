@@ -168,4 +168,18 @@ class SubsonicVersionTest: XCTestCase {
     XCTAssertFalse(v3 <= v1)
     XCTAssertTrue(v1 <= v5)
   }
+
+  /// BUG-891: no Last.fm, ever. The music-server calls Navidrome answers from Last.fm are
+  /// refused where every server address is built, whatever their spelling.
+  func testLastFmBackedServerCallsAreRefused() {
+    for action in [
+      "getSimilarSongs", "getSimilarSongs2", "getArtistInfo", "getArtistInfo2",
+      "getAlbumInfo", "getAlbumInfo2", "getTopSongs", "GETTOPSONGS",
+    ] {
+      XCTAssertTrue(SubsonicServerApi.isProhibitedAction(action), action)
+    }
+    for action in ["getArtist", "getAlbum", "getCoverArt", "stream", "getRandomSongs", "ping"] {
+      XCTAssertFalse(SubsonicServerApi.isProhibitedAction(action), action)
+    }
+  }
 }
