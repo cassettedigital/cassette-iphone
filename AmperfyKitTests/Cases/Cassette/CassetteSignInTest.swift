@@ -178,4 +178,50 @@ class CassetteSignInTest: XCTestCase {
     XCTAssertEqual(r.answer(to: callback("token=&state=\(code)")), .failed)
     XCTAssertEqual(r.answer(to: nil), .failed)
   }
+
+  // MARK: This phone's id and label (BUG-459)
+
+  func testDeviceIdIsNeverPinnedToTheStandIn() {
+    let cache = DeviceIdentityCache()
+    // Before the first unlock after a restart the system withholds the id.
+    XCTAssertEqual(cache.deviceId { nil }, "unknown-device")
+    XCTAssertEqual(cache.deviceId { "" }, "unknown-device")
+    // The stand-in was not kept: the real id is used from the first call that has it.
+    XCTAssertEqual(cache.deviceId { "VENDOR-ONE" }, "VENDOR-ONE")
+    // Then it never changes, whatever a later read says.
+    XCTAssertEqual(cache.deviceId { nil }, "VENDOR-ONE")
+    XCTAssertEqual(cache.deviceId { "VENDOR-TWO" }, "VENDOR-ONE")
+    cache.keep(id: "VENDOR-THREE", label: nil)
+    XCTAssertEqual(cache.deviceId { nil }, "VENDOR-ONE")
+  }
+
+  func testKeptDeviceIdentityIsNotReadAgain() {
+    let cache = DeviceIdentityCache()
+    cache.keep(id: nil, label: "") // nothing real: nothing kept
+    XCTAssertEqual(cache.deviceId { nil }, "unknown-device")
+    XCTAssertEqual(cache.deviceLabel { nil }, "iPhone")
+    cache.keep(id: "VENDOR-ONE", label: "Michael's iPhone")
+    XCTAssertEqual(cache.deviceId { XCTFail("read again"); return nil }, "VENDOR-ONE")
+    XCTAssertEqual(cache.deviceLabel { XCTFail("read again"); return nil }, "Michael's iPhone")
+  }
+
+  /// The id the sync layer sends is the system's own vendor id, the same string, from the main
+  /// thread, from another thread before anything was kept, and from another thread after.
+  @MainActor
+  func testDeviceIdIsTheVendorIdFromEveryThread() async throws {
+    let expected = try XCTUnwrap(UIDevice.current.identifierForVendor?.uuidString)
+    let expectedName = UIDevice.current.name
+    let before = await Task.detached { CassetteSyncAPI.readDeviceOnMainThread() }.value
+    XCTAssertEqual(before?.id, expected)
+    XCTAssertEqual(before?.label, expectedName)
+    XCTAssertEqual(CassetteSyncAPI.readDeviceOnMainThread()?.id, expected)
+    let unprimed = await Task.detached { CassetteSyncAPI.deviceId }.value
+    XCTAssertEqual(unprimed, expected)
+    CassetteSyncAPI.primeDeviceIdentity()
+    XCTAssertEqual(CassetteSyncAPI.deviceId, expected)
+    let primed = await Task.detached { CassetteSyncAPI.deviceId }.value
+    XCTAssertEqual(primed, expected)
+    let label = await Task.detached { CassetteSyncAPI.deviceLabel }.value
+    XCTAssertEqual(label, expectedName)
+  }
 }

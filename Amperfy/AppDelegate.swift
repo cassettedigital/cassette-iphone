@@ -280,6 +280,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
       os_log("application launch", log: self.log, type: .info)
     }
 
+    // cassette (BUG-459): the sync layer reads this phone's id from every thread; read it here,
+    // on the main thread, once.
+    CassetteSyncAPI.primeDeviceIdentity()
     storage.applyMultiAccountSettingsUpdateIfNeeded()
     libraryUpdater.performAccountCleanUpIfNeccessaryInBackground()
     // cassette (keep playing): what the queue carries on with obeys the same "on this

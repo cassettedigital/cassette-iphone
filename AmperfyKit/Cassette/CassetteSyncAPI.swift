@@ -805,6 +805,69 @@ public struct KeepPlayingAnswer: Decodable, Sendable {
   public let songs: [String]?
 }
 
+// MARK: - DeviceIdentityCache
+
+/// The phone's id and label, kept for any thread. A real id is kept the first time it is read
+/// and never replaced; the stand-in "unknown-device" (the system withholds the id before the
+/// first unlock after a restart) is handed out but never kept, so one early call cannot pin the
+/// phone to it. The label is kept the same way, and refreshed when the app starts.
+final class DeviceIdentityCache: @unchecked Sendable {
+  static let unknownId = "unknown-device"
+  static let unknownLabel = "iPhone"
+
+  private let lock = NSLock()
+  private var id: String?
+  private var label: String?
+
+  /// What the main thread just read. A missing or empty id changes nothing.
+  func keep(id newId: String?, label newLabel: String?) {
+    lock.lock()
+    defer { lock.unlock() }
+    if id == nil, let newId, !newId.isEmpty { id = newId }
+    if let newLabel, !newLabel.isEmpty { label = newLabel }
+  }
+
+  func deviceId(reading read: () -> String?) -> String {
+    if let kept = kept({ $0.id }) { return kept }
+    guard let value = read(), !value.isEmpty else { return Self.unknownId }
+    keep(id: value, label: nil)
+    return kept { $0.id } ?? value
+  }
+
+  func deviceLabel(reading read: () -> String?) -> String {
+    if let kept = kept({ $0.label }) { return kept }
+    guard let value = read(), !value.isEmpty else { return Self.unknownLabel }
+    keep(id: nil, label: value)
+    return value
+  }
+
+  private func kept(_ pick: (DeviceIdentityCache) -> String?) -> String? {
+    lock.lock()
+    defer { lock.unlock() }
+    return pick(self)
+  }
+}
+
+// MARK: - DeviceReadBox
+
+/// The answer of a main-thread read handed back to the thread that asked.
+private final class DeviceReadBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var stored: (id: String?, label: String)?
+
+  func set(_ value: (id: String?, label: String)) {
+    lock.lock()
+    stored = value
+    lock.unlock()
+  }
+
+  var value: (id: String?, label: String)? {
+    lock.lock()
+    defer { lock.unlock() }
+    return stored
+  }
+}
+
 // MARK: - CassetteSyncAPI
 
 public final class CassetteSyncAPI: @unchecked Sendable {
@@ -1031,15 +1094,54 @@ public final class CassetteSyncAPI: @unchecked Sendable {
 
   // MARK: Device identity
 
+  /// What the sync layer knows of this phone, kept once read (BUG-459). UIDevice answers on the
+  /// main thread only and these are read from every thread, so the answer is read on the main
+  /// thread and kept, never fetched per call off it.
+  nonisolated private static let identity = DeviceIdentityCache()
+
+  /// Read this phone's id and label on the main thread and keep them. Called at launch, so a
+  /// call from a background thread finds them kept instead of reaching for UIDevice.
+  @MainActor
+  public static func primeDeviceIdentity() {
+    let device = UIDevice.current
+    identity.keep(id: device.identifierForVendor?.uuidString, label: device.name)
+  }
+
   /// Stable per-vendor device id — the key the whole sync layer (inventory,
-  /// intents, and now the user_devices registry) uses for this phone.
+  /// intents, and now the user_devices registry) uses for this phone. Once a real
+  /// id has been read it never changes for the life of the app. Before the first
+  /// unlock after a restart the system can still withhold it: that call answers
+  /// "unknown-device", exactly as before, and the answer is NOT kept, so the real
+  /// id is used from the first call after the system hands it over.
   public static var deviceId: String {
-    UIDevice.current.identifierForVendor?.uuidString ?? "unknown-device"
+    identity.deviceId { readDeviceOnMainThread()?.id }
   }
 
   /// Human label ("Michael's iPhone").
   public static var deviceLabel: String {
-    UIDevice.current.name
+    identity.deviceLabel { readDeviceOnMainThread()?.label }
+  }
+
+  /// The id and name straight from UIDevice, read on the main thread (a hop of at most two
+  /// seconds when asked from another, so a main thread that is itself waiting on this one can
+  /// never freeze the app). Nil when the hop timed out.
+  nonisolated static func readDeviceOnMainThread() -> (id: String?, label: String)? {
+    @Sendable
+    func read() -> (id: String?, label: String) {
+      MainActor.assumeIsolated {
+        let device = UIDevice.current
+        return (device.identifierForVendor?.uuidString, device.name)
+      }
+    }
+    if Thread.isMainThread { return read() }
+    let box = DeviceReadBox()
+    let done = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async {
+      box.set(read())
+      done.signal()
+    }
+    guard done.wait(timeout: .now() + 2) == .success else { return nil }
+    return box.value
   }
 
   /// HTTP header values must be ASCII; device names often aren't (curly
