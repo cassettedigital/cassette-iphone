@@ -497,30 +497,29 @@ class BasicTableViewController: KeyCommandTableViewController, ListScreenChrome 
         .vibrate(isHapticsEnabled: self.appDelegate.storage.settings.user.isHapticsEnabled)
       actionCallback(indexPath) { actionContext in
         guard let actionContext = actionContext else { return }
+        // The queue actions take OneTapPlay's rule, like the long-press menu: in on-device
+        // mode the songs on this phone, cached or not. Filtering by the download cache
+        // while offline dropped songs the phone owns (BUG-443).
         switch actionType {
         case .insertUserQueue:
           self.appDelegate.player
             .insertUserQueue(
-              playables: actionContext.playables
-                .filterCached(dependigOn: self.appDelegate.storage.settings.user.isOfflineMode)
+              playables: OneTapPlay.playables(actionContext.playables)
             )
         case .appendUserQueue:
           self.appDelegate.player
             .appendUserQueue(
-              playables: actionContext.playables
-                .filterCached(dependigOn: self.appDelegate.storage.settings.user.isOfflineMode)
+              playables: OneTapPlay.playables(actionContext.playables)
             )
         case .insertContextQueue:
           self.appDelegate.player
             .insertContextQueue(
-              playables: actionContext.playables
-                .filterCached(dependigOn: self.appDelegate.storage.settings.user.isOfflineMode)
+              playables: OneTapPlay.playables(actionContext.playables)
             )
         case .appendContextQueue:
           self.appDelegate.player
             .appendContextQueue(
-              playables: actionContext.playables
-                .filterCached(dependigOn: self.appDelegate.storage.settings.user.isOfflineMode)
+              playables: OneTapPlay.playables(actionContext.playables)
             )
         case .download:
           if let account = actionContext.containable.account {
@@ -570,14 +569,12 @@ class BasicTableViewController: KeyCommandTableViewController, ListScreenChrome 
         case .insertPodcastQueue:
           self.appDelegate.player
             .insertPodcastQueue(
-              playables: actionContext.playables
-                .filterCached(dependigOn: self.appDelegate.storage.settings.user.isOfflineMode)
+              playables: OneTapPlay.playables(actionContext.playables)
             )
         case .appendPodcastQueue:
           self.appDelegate.player
             .appendPodcastQueue(
-              playables: actionContext.playables
-                .filterCached(dependigOn: self.appDelegate.storage.settings.user.isOfflineMode)
+              playables: OneTapPlay.playables(actionContext.playables)
             )
         case .favorite:
           Task { @MainActor in
