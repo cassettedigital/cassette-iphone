@@ -573,14 +573,15 @@ import UIKit
 
   // MARK: - DeviceCoverCache
 
-  /// Local covers for the device pages, decoded small off the main thread and kept by path
-  /// and size.
+  /// Local covers for the device pages, decoded small off the main thread and kept by size
+  /// and the foundation's cover key (the path plus the file's date, `CoverTint.cacheKey`), so
+  /// a cover replaced at the same path is decoded anew rather than shown as it was (BUG-458).
   @MainActor
   enum DeviceCoverCache {
     private static let cache = NSCache<NSString, UIImage>()
 
     private static func key(_ path: String, _ maxPixel: Int) -> NSString {
-      "\(maxPixel)|\(path)" as NSString
+      "\(maxPixel)|\(CoverTint.cacheKey(forCoverPath: path))" as NSString
     }
 
     static func cached(path: String?, maxPixel: Int) -> UIImage? {

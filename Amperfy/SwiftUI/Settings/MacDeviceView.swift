@@ -37,6 +37,10 @@ import SwiftUI
     /// The lead cover, small, for the glow.
     @State
     private var leadImage: UIImage?
+    /// The glow's key: the lead cover's path plus its file's date (`CoverTint.cacheKey`), so a
+    /// cover replaced at the same path glows anew instead of keeping the old picture (BUG-458).
+    @State
+    private var leadKey = ""
     /// The payloads are heavy server reads: once per page open.
     @State
     private var didOpen = false
@@ -56,7 +60,7 @@ import SwiftUI
           // key changes, so a key set before the decode would leave the page unlit.
           CoverGlowLayer(
             image: leadImage,
-            key: leadImage == nil ? "" : (lead?.coverPath ?? ""),
+            key: leadImage == nil ? "" : leadKey,
             recipe: .page
           )
           .frame(height: 700)
@@ -90,6 +94,7 @@ import SwiftUI
         leadTint = nil
         return
       }
+      leadKey = CoverTint.cacheKey(forCoverPath: path)
       leadImage = await DeviceCoverCache.image(path: path, maxPixel: 128)
       leadTint = await CoverTint.resolve(coverPath: path)
     }
