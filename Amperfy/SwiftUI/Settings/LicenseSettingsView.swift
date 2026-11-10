@@ -1478,8 +1478,8 @@ This program comes with ABSOLUTELY NO WARRANTY. It is free software: you can red
 /// made and pushed with every build that ships.
 @MainActor
 var cassetteSourceURL: URL {
-  URL(string: "https://github.com/manimmichael/amperfy/tree/cassette-ios-\(AppDelegate.version)-\(AppDelegate.buildNumber)")
-    ?? URL(string: "https://github.com/manimmichael/amperfy")!
+  URL(string: "https://github.com/cassettedigital/cassette-iphone/tree/cassette-ios-\(AppDelegate.version)-\(AppDelegate.buildNumber)")
+    ?? URL(string: "https://github.com/cassettedigital/cassette-iphone")!
 }
 
 // MARK: - LicenseCredit
