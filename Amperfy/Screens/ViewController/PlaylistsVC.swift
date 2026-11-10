@@ -292,7 +292,7 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
     if appDelegate.storage.settings.user.isOnlineMode {
       barButtons.append(editButtonItem)
     }
-    navigationItem.rightBarButtonItems = barButtons
+    setRightBarButtonItems(barButtons)
   }
 
   func createCell(

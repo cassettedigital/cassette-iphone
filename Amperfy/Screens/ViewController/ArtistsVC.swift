@@ -328,7 +328,7 @@ class ArtistsVC: SingleSnapshotFetchedResultsTableViewController<ArtistMO> {
     }
     optionsButton = UIBarButtonItem.createOptionsBarButton()
     optionsButton.menu = UIMenu(children: actions)
-    navigationItem.rightBarButtonItems = [optionsButton]
+    setRightBarButtonItems([optionsButton])
   }
 
   func updateFromRemote() {

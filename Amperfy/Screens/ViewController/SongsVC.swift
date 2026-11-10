@@ -215,7 +215,7 @@ class SongsVC: SingleFetchedResultsTableViewController<SongMO> {
     }
     optionsButton = UIBarButtonItem.createOptionsBarButton()
     optionsButton.menu = UIMenu(children: actions)
-    navigationItem.rightBarButtonItems = [optionsButton]
+    setRightBarButtonItems([optionsButton])
   }
 
   func updateFromRemote() {

@@ -310,4 +310,25 @@ final class LibraryContainerVC: UIViewController {
 
 extension LibraryContainerVC {
   override var sceneTitle: String? { "Library" }
+
+  /// The embedded list's new right-bar buttons, drawn in this bar (see `setRightBarButtonItems`).
+  fileprivate func adoptRightBarButtonItems(
+    _ items: [UIBarButtonItem]?,
+    from child: UIViewController
+  ) {
+    guard child === embeddedChild else { return }
+    navigationItem.rightBarButtonItems = items
+  }
+}
+
+extension UIViewController {
+  /// Sets this screen's right-bar buttons, and the Library container's while this list is
+  /// embedded in it. The container draws the bar and copied the list's buttons only when it
+  /// embedded the list, so a list that rebuilt its options menu after a sort or filter change
+  /// went on showing the old menu, and Change Grid Size anchored to a button that wasn't on
+  /// screen (BUG-449).
+  func setRightBarButtonItems(_ items: [UIBarButtonItem]?) {
+    navigationItem.rightBarButtonItems = items
+    (parent as? LibraryContainerVC)?.adoptRightBarButtonItems(items, from: self)
+  }
 }

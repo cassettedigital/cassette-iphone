@@ -426,9 +426,9 @@ class AlbumsCommonVCInteractions {
     if !actions.isEmpty {
       optionsButton = UIBarButtonItem.createOptionsBarButton()
       optionsButton.menu = UIMenu(children: actions)
-      rootVC?.navigationItem.rightBarButtonItems = [optionsButton]
+      rootVC?.setRightBarButtonItems([optionsButton])
     } else {
-      rootVC?.navigationItem.rightBarButtonItems = []
+      rootVC?.setRightBarButtonItems([])
     }
   }
 
