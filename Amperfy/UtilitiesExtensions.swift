@@ -523,10 +523,11 @@ extension UIContentUnavailableConfiguration {
     return config
   }
 
-  /// A "no results" state for a search.
+  /// A "no results" state for a search. The title alone, like the on-device states below
+  /// (phone-taste: no explainer copy; BUG-453).
   static func cassetteNoResults(
     title: String = "No results",
-    body: String? = "Try a different artist, album, or song."
+    body: String? = nil
   )
     -> UIContentUnavailableConfiguration {
     var config = UIContentUnavailableConfiguration.search()
