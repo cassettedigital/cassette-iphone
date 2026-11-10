@@ -19,6 +19,7 @@
 //  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+import Alamofire
 import Foundation
 import os.log
 import UIKit
@@ -185,10 +186,7 @@ public class EventLogger {
     // still goes into detailMessage so tap → NotificationDetailVC
     // surfaces the real error for debugging.
     let raw = error.localizedDescription
-    let popupCopy: String = {
-      guard Self.isNetworkConnectivityError(error) else { return raw }
-      return Self.friendlyNetworkCopy(forTopic: topic)
-    }()
+    let popupCopy = Self.bannerCopy(for: error, topic: topic)
     saveAndDisplay(
       topic: topic,
       logType: .error,
@@ -249,13 +247,32 @@ public class EventLogger {
     return false
   }
 
-  private static func friendlyNetworkCopy(forTopic topic: String) -> String {
-    switch topic {
-    case "Toggle Favorite":
+  /// The banner's sentence for `error`. A network failure gets plain words for what is out of
+  /// reach (the phone offline, Cassette, or the person's computer), never the raw
+  /// "URLSessionTask failed with error: ..." text, which stays in the detail a tap opens. The
+  /// music server's calls go through Alamofire, which wraps the URL error, so the wrapper is
+  /// looked through first; before, those reached the banner raw (BUG-972).
+  /// The error a music-server call throws when its request fails: Alamofire's wrapper around
+  /// the URL error. Built here for the tests, whose target doesn't link Alamofire.
+  static func musicServerFailure(_ error: URLError) -> Error {
+    AFError.sessionTaskFailed(error: error)
+  }
+
+  static func bannerCopy(for error: Error, topic: String) -> String {
+    let underlying = (error as? AFError)?.underlyingError ?? error
+    guard isNetworkConnectivityError(underlying) else { return error.localizedDescription }
+    if topic == "Toggle Favorite" {
       return "Couldn't update your favorite. Try again in a moment."
-    default:
-      return "Your computer isn't answering. Try again in a moment."
     }
+    let urlError = underlying as? URLError
+    if urlError?.code == .notConnectedToInternet || urlError?.code == .dataNotAllowed {
+      return "You're offline. Try again when you're connected."
+    }
+    if let host = urlError?.failingURL?.host?.lowercased(),
+       host == "cassette.digital" || host.hasSuffix(".cassette.digital") {
+      return "Cassette isn't answering. Try again in a moment."
+    }
+    return "Your computer isn't answering. Try again in a moment."
   }
 
   private func saveAndDisplay(

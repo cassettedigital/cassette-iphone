@@ -70,4 +70,45 @@ class HelperTest: XCTestCase {
     XCTAssertEqual(library.getPlaylists(for: account2).count, 2)
     XCTAssertEqual(library.getRadios(for: account2).count, 2)
   }
+
+  /// BUG-972: a network failure's banner says what is out of reach in plain words, including
+  /// when Alamofire wraps the URL error (the music server's calls), never the raw
+  /// "URLSessionTask failed with error: ..." text.
+  func testNetworkBannersSayWhatIsOutOfReach() {
+    let hub = URL(string: "http://192.168.1.20:4533/rest/getPlaylists.view")!
+    let cloud = URL(string: "https://www.cassette.digital/api/sync/playlists")!
+    let hubDown = URLError(.cannotFindHost, userInfo: [NSURLErrorFailingURLErrorKey: hub])
+    let wrapped = EventLogger.musicServerFailure(hubDown)
+    XCTAssertTrue(wrapped.localizedDescription.hasPrefix("URLSessionTask failed"))
+    XCTAssertEqual(
+      EventLogger.bannerCopy(for: wrapped, topic: "Playlists Sync"),
+      "Your computer isn't answering. Try again in a moment."
+    )
+    XCTAssertEqual(
+      EventLogger.bannerCopy(for: hubDown, topic: "Playlists Sync"),
+      "Your computer isn't answering. Try again in a moment."
+    )
+    let offline = URLError(.notConnectedToInternet, userInfo: [NSURLErrorFailingURLErrorKey: cloud])
+    XCTAssertEqual(
+      EventLogger.bannerCopy(
+        for: EventLogger.musicServerFailure(offline),
+        topic: "Playlist Create"
+      ),
+      "You're offline. Try again when you're connected."
+    )
+    let cloudDown = URLError(.timedOut, userInfo: [NSURLErrorFailingURLErrorKey: cloud])
+    XCTAssertEqual(
+      EventLogger.bannerCopy(for: cloudDown, topic: "Playlist Create"),
+      "Cassette isn't answering. Try again in a moment."
+    )
+    XCTAssertEqual(
+      EventLogger.bannerCopy(for: wrapped, topic: "Toggle Favorite"),
+      "Couldn't update your favorite. Try again in a moment."
+    )
+    struct NotNetwork: LocalizedError { var errorDescription: String? { "Name already taken" } }
+    XCTAssertEqual(
+      EventLogger.bannerCopy(for: NotNetwork(), topic: "Playlist Create"),
+      "Name already taken"
+    )
+  }
 }

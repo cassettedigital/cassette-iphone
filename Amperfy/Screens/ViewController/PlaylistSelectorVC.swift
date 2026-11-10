@@ -154,7 +154,8 @@ class PlaylistSelectorVC: SingleSnapshotFetchedResultsTableViewController<Playli
       try await self.appDelegate.getMeta(self.account.info).librarySyncer
         .syncDownPlaylistsWithoutSongs()
     } catch {
-      self.appDelegate.eventLogger.report(topic: "Playlists Sync", error: error)
+      // Runs on its own as the picker opens: logged, never a banner (BUG-972).
+      self.appDelegate.eventLogger.report(topic: "Playlists Sync", error: error, isBackground: true)
     }}
   }
 

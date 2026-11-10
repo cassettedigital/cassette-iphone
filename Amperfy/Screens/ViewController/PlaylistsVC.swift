@@ -190,7 +190,12 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
               .playableDownloadManager
           )
         } catch {
-          self.appDelegate.eventLogger.report(topic: "Playlist Sync", error: error)
+          // The swipe's prefetch: logged, never a banner (Patch 040).
+          self.appDelegate.eventLogger.report(
+            topic: "Playlist Sync",
+            error: error,
+            isBackground: true
+          )
         }
         // phone-taste: the swipe queues and plays only what is on this phone.
         completionHandler(SwipeActionContext(containable: OnPhoneContainable(playlist)))
@@ -199,8 +204,14 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
     snapshotDidChange = { [weak self] in
       guard let self else { return }
       updateContentUnavailable()
+      if hasPlaylists != barOffersEdit { updateRightBarButtonItems() }
     }
   }
+
+  /// Whether the list has a playlist of the person's own: Edit is offered only then, since on
+  /// an empty list it has nothing to act on (BUG-972).
+  private var hasPlaylists: Bool { (fetchedResultsController?.fetchedObjects?.count ?? 0) > 0 }
+  private var barOffersEdit = false
 
   func updateContentUnavailable() {
     // Made-for-you playlists under an empty list of their own still make a page.
@@ -253,7 +264,8 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
       try await self.appDelegate.getMeta(self.account.info).librarySyncer
         .syncDownPlaylistsWithoutSongs()
     } catch {
-      self.appDelegate.eventLogger.report(topic: "Playlists Sync", error: error)
+      // Runs on its own as the list opens: a failure is logged, never a banner (BUG-972).
+      self.appDelegate.eventLogger.report(topic: "Playlists Sync", error: error, isBackground: true)
     }}
   }
 
@@ -296,7 +308,8 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
     optionsButton.menu = UIMenu(children: actions)
     var barButtons = [UIBarButtonItem]()
     barButtons.append(optionsButton)
-    if appDelegate.storage.settings.user.isOnlineMode {
+    barOffersEdit = appDelegate.storage.settings.user.isOnlineMode && hasPlaylists
+    if barOffersEdit {
       barButtons.append(editButtonItem)
     }
     setRightBarButtonItems(barButtons)

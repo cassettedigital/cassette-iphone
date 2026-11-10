@@ -339,7 +339,12 @@ class PlaylistDetailVC: SingleSnapshotFetchedResultsTableViewController<Playlist
             .playableDownloadManager
         )
       } catch {
-        self.appDelegate.eventLogger.report(topic: "Playlist Sync", error: error)
+        // Runs on its own as the page opens: logged, never a banner (BUG-972).
+        self.appDelegate.eventLogger.report(
+          topic: "Playlist Sync",
+          error: error,
+          isBackground: true
+        )
       }
       self.refreshDescriptionLine()
       self.refreshPlaylistMetadataLine()
