@@ -63,6 +63,11 @@ final class HomeVC: UICollectionViewController {
   /// One hosting controller for the life of Home, so the card's motion survives redraws.
   private let computerCard = ComputerCardModel()
   private var computerCardHost: UIHostingController<ComputerCardRoot>?
+  /// BUG-451: each artist circle's stand-in record (nil: the artist's own photo, or nothing
+  /// to stand in), worked out once per artist and forgotten at every snapshot so it follows
+  /// what is on the phone. The owned sets are read once per snapshot too.
+  private var artistStandIns: [NSManagedObjectID: Album?] = [:]
+  private var standInOwned: HomeManager.OnPhoneCheck?
   /// The card's row height: the card's own target height, which it reports as it changes.
   private var computerCardHeight: CGFloat = 260
 
@@ -761,7 +766,12 @@ final class HomeVC: UICollectionViewController {
         ) as! ArtistCircleCollectionCell
         // The disc shuffles the artist (OneTapPlay); the circle opens the artist page.
         cell.onPlayTapped = { OneTapPlay.play(artist) }
-        cell.display(artist: artist, showsPlayOverlay: true, metrics: .homeShelf)
+        cell.display(
+          artist: artist,
+          standIn: standInRecord(for: artist),
+          showsPlayOverlay: true,
+          metrics: .homeShelf
+        )
         return cell
       }
       let cell = collectionView.dequeueReusableCell(
@@ -939,6 +949,8 @@ final class HomeVC: UICollectionViewController {
   /// Recently Added all hide independently). The full-screen empty
   /// state still kicks in when every shelf is empty.
   private func applySnapshot(animated: Bool = true) {
+    artistStandIns = [:]
+    standInOwned = nil
     var snapshot = NSDiffableDataSourceSnapshot<HomeSection, HomeItem>()
     var totalItems = 0
     // cassette: a diffable snapshot HARD-crashes (SIGTRAP) on a duplicate section
@@ -1065,6 +1077,37 @@ final class HomeVC: UICollectionViewController {
   private func refreshOfflineMode() {
     os_log("HomeVC: OfflineModeChanged", log: self.log, type: .info)
     sharedHome.createFetchController()
+  }
+
+  /// BUG-451: the record an artist with no photo of their own shows in the circle, by
+  /// Search's rule (`SearchMatcher.coverAlbumIDs`, the artist page's lead record): their own
+  /// records on the phone newest first, else the records their songs here are on; the first
+  /// with a cover on disk, else the first. nil when they have their own photo.
+  private func standInRecord(for artist: Artist) -> Album? {
+    let objectID = artist.managedObject.objectID
+    if let known = artistStandIns[objectID] { return known }
+    var standIn: Album?
+    if !artist.hasOwnPhotoOnDisk {
+      let owned = standInOwned ?? HomeManager.makeOnPhoneCheck(storage: appDelegate.storage)
+      standInOwned = owned
+      let context = appDelegate.storage.main.context
+      let setting = appDelegate.storage.settings.accounts.getSetting(account.info).read
+        .artworkDisplayPreference
+      let candidates = SearchMatcher.coverAlbumIDs(
+        for: artist,
+        shown: [],
+        ownedAlbumIds: owned.owned?.albumIds,
+        ownedSongIds: owned.owned?.trackIds
+      )
+      .compactMap { (try? context.existingObject(with: $0)) as? AlbumMO }
+      .map { Album(managedObject: $0) }
+      standIn = candidates.first { album in
+        guard let path = album.imagePath(setting: setting) else { return false }
+        return FileManager.default.fileExists(atPath: path)
+      } ?? candidates.first
+    }
+    artistStandIns[objectID] = .some(standIn)
+    return standIn
   }
 
   /// Edit Home is put away for now (founder, 2026-11-10: "love the idea, but don't need to

@@ -162,8 +162,11 @@ final class ArtistCircleCollectionCell: BasicCollectionCell {
   }
 
   /// `attributedName`, when given, replaces the plain name (e.g. a name lit by a cover).
+  /// `standIn`, when given, is drawn in the circle instead: the record that stands for an
+  /// artist with no photo of their own, as Search's artist cards draw it (BUG-451).
   func display(
     artist: Artist,
+    standIn: Album? = nil,
     showsPlayOverlay: Bool = false,
     metrics: ArtistCircleMetrics = .standard,
     attributedName: NSAttributedString? = nil
@@ -178,7 +181,11 @@ final class ArtistCircleCollectionCell: BasicCollectionCell {
       nameLabel.text = artist.name
     }
     nameLabel.textAlignment = metrics.centeredName ? .center : .natural
-    entityImage.displayAndUpdate(entity: artist)
+    if let standIn {
+      entityImage.displayAndUpdate(entity: standIn)
+    } else {
+      entityImage.displayAndUpdate(entity: artist)
+    }
     if showsPlayOverlay { setupPlayOverlayIfNeeded() }
     playOverlay?.isHidden = !showsPlayOverlay
   }
