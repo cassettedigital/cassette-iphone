@@ -1971,6 +1971,11 @@ public final class IntentExecutor {
   /// The decodable bytes at `url`, or nil (an error status, an empty or undecodable body, a
   /// network failure).
   nonisolated private static func fetchArtistPhoto(_ url: URL) async -> Data? {
+    // Never Deezer or Last.fm, whatever address the cloud hands over (BUG-891).
+    guard !CoverImageStore.isProhibitedPictureHost(url) else {
+      print("Cassette poll: artist photo refused, prohibited host - \(url.host ?? "")")
+      return nil
+    }
     var urlRequest = URLRequest(url: url)
     // Well under URLSession's 60s default: these run serially inside the poll.
     urlRequest.timeoutInterval = 15

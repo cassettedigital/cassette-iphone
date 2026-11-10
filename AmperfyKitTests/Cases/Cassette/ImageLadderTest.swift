@@ -128,4 +128,37 @@ class ImageLadderTest: XCTestCase {
         .url(rung: 1200)
     )
   }
+
+  /// BUG-891: no Deezer, no Last.fm, ever. The phone refuses their picture hosts, every
+  /// country domain and image host included, and leaves every other host alone.
+  func testDeezerAndLastFmPictureHostsAreRefused() throws {
+    for address in [
+      "https://e-cdns-images.dzcdn.net/images/artist/abc/500x500.jpg",
+      "https://cdn-images.dzcdn.net/images/cover/abc/1000x1000.jpg",
+      "https://api.deezer.com/artist/27/image",
+      "https://www.deezer.fr/x.jpg",
+      "https://dzr.page.link/abc",
+      "https://lastfm.freetls.fastly.net/i/u/300x300/abc.png",
+      "https://lastfm-img2.akamaized.net/i/u/abc.png",
+      "https://www.last.fm/music/x/+images/abc",
+      "https://cn.last.fm/x.jpg",
+      "https://www.lastfm.de/x.jpg",
+      "https://ws.audioscrobbler.com/2.0/",
+      "https://LASTFM.FREETLS.FASTLY.NET/i/u/abc.png",
+    ] {
+      let url = try XCTUnwrap(URL(string: address))
+      XCTAssertTrue(CoverImageStore.isProhibitedPictureHost(url), address)
+    }
+    for address in [
+      "https://media.cassette.digital/i/480/m/artists/a/original.jpg",
+      "https://upload.wikimedia.org/wikipedia/commons/a/ab/x.jpg",
+      "https://coverartarchive.org/release/abc/front",
+      "https://blastfm.example.com/x.jpg",
+      "https://notdeezer.com/x.jpg",
+      "http://192.168.1.20:4533/rest/getCoverArt",
+    ] {
+      let url = try XCTUnwrap(URL(string: address))
+      XCTAssertFalse(CoverImageStore.isProhibitedPictureHost(url), address)
+    }
+  }
 }

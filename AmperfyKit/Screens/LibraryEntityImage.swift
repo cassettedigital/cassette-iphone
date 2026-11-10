@@ -655,6 +655,20 @@ public enum CoverImageStore {
     return sourceDecodes(src)
   }
 
+  /// A picture address on Deezer's or Last.fm's hosts, which the phone never fetches (no Deezer,
+  /// no Last.fm, ever: neither licence allows a commercial product). Every country domain and
+  /// subdomain counts, and their image hosts (dzcdn, lastfm.freetls.fastly.net, the older
+  /// lastfm-img2.akamaized.net). The website's rule (apps/cassette src/lib/enrichment/
+  /// source-policy.ts PROHIBITED_HOST) plus those older Last.fm image hosts; the cloud already
+  /// leaves these out, so this only matters if an old address slips through (BUG-891, BUG-865).
+  public static func isProhibitedPictureHost(_ url: URL) -> Bool {
+    guard let host = url.host?.lowercased() else { return false }
+    return host.range(of: prohibitedHostPattern, options: .regularExpression) != nil
+  }
+
+  private static let prohibitedHostPattern =
+    #"(^|\.)(last\.fm|lastfm[a-z0-9-]*\.[a-z.]+|audioscrobbler\.[a-z.]+|deezer\.[a-z.]+|dzcdn\.[a-z.]+|dzr\.page\.link)\.?$"#
+
   /// Whether the file at `url` decodes to an image (forces a bounded real decode).
   public static func isDecodable(fileURL url: URL) -> Bool {
     guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return false }

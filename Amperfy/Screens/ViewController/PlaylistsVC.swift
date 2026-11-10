@@ -27,6 +27,9 @@ import UIKit
 // MARK: - PlaylistsDiffableDataSource
 
 class PlaylistsDiffableDataSource: BasicUITableViewDiffableDataSource {
+  /// Shows the delete confirmation.
+  weak var presenter: UIViewController?
+
   override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
     // Return false if you do not want the item to be re-orderable.
     false
@@ -62,6 +65,24 @@ class PlaylistsDiffableDataSource: BasicUITableViewDiffableDataSource {
       return
     }
 
+    // A playlist is deleted on every device and can't be brought back, so the swipe asks
+    // first (BUG-891). Cancel leaves the row as it was.
+    let confirm = UIAlertController(
+      title: "Delete \u{201C}\(playlist.name)\u{201D}?",
+      message: "It goes from all your devices.",
+      preferredStyle: .alert
+    )
+    confirm.addAction(UIAlertAction(title: "Delete", style: .destructive) { [weak self] _ in
+      self?.delete(playlist)
+    })
+    confirm.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+      tableView.setEditing(false, animated: true)
+    })
+    // Nothing to ask from, nothing deleted.
+    presenter?.present(confirm, animated: true)
+  }
+
+  private func delete(_ playlist: Playlist) {
     let playlistId = playlist.id
     appDelegate.storage.main.library.deletePlaylist(playlist)
     appDelegate.storage.main.saveContext()
@@ -108,6 +129,7 @@ class PlaylistsVC: SingleSnapshotFetchedResultsTableViewController<PlaylistMO> {
         )
         return self.createCell(tableView, forRowAt: indexPath, playlist: playlist)
       }
+    source.presenter = self
     return source
   }
 

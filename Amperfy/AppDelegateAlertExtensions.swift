@@ -85,6 +85,8 @@ extension AppDelegate {
   /// go (CassetteSyncAPI.forgetAccount), the saved stations with them, and the in-app web pages
   /// (CassetteWebPageVC) forget their website session. Before this, "Log Out" showed the sign-in screen
   /// while the phone stayed signed in underneath, and the next sign-in re-paired without asking.
+  /// The in-app web pages forget every site, not only cassette.digital: a YouTube or Google sign-in
+  /// made inside a page stayed behind for whoever signed in next (BUG-891).
   private func forgetCassetteSignIn() {
     if let token = storage.settings.cassetteBearerToken {
       Task { await CassetteSyncAPI.revokeSignIn(token) }
@@ -94,9 +96,7 @@ extension AppDelegate {
     RadioSaved.shared.forget()
     let site = WKWebsiteDataStore.default()
     Task { @MainActor in
-      let all = WKWebsiteDataStore.allWebsiteDataTypes()
-      let records = await site.dataRecords(ofTypes: all)
-      await site.removeData(ofTypes: all, for: records.filter { $0.displayName.hasSuffix("cassette.digital") })
+      await site.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast)
     }
   }
 

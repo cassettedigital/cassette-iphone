@@ -358,14 +358,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     // iOS suspends us, so a just-completed copy burst isn't lost (files-on-disk with
     // no ownership row = albums that never appear in the on-device library). Guarded
     // by a background-task assertion so the async flush has time to finish.
-    let ownershipFlushTask = UIApplication.shared
-      .beginBackgroundTask(withName: "digital.cassette.ownership-flush")
+    // BUG-891: the time iOS grants comes with a handler for when it runs out. Without one,
+    // a flush still running at the deadline gets the app killed instead of suspended.
+    let ownershipFlushTime = BackgroundTime(name: "digital.cassette.ownership-flush")
     Task {
       await CassetteTransferSession.shared.flushPending()
-      await MainActor.run {
-        if ownershipFlushTask !=
-          .invalid { UIApplication.shared.endBackgroundTask(ownershipFlushTask) }
-      }
+      await MainActor.run { ownershipFlushTime.end() }
     }
     stopCassetteIntentPolling()
     // cassette 2026-10-31 (I-P3): no wake-up every 45 minutes. Amperfy booked a background
@@ -433,5 +431,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
   func scene(_ scene: UIScene, didUpdate userActivity: NSUserActivity) {
     os_log("didUpdate userActivity: %s", log: self.log, type: .info, userActivity.activityType)
+  }
+}
+
+// MARK: - BackgroundTime
+
+/// Time iOS grants to finish work after the app leaves the screen, given back once: when the
+/// work is done, or when iOS says time is up (the expiry handler), whichever comes first.
+/// Holding it past the deadline gets the app killed rather than suspended (BUG-891).
+@MainActor
+final class BackgroundTime {
+  private var identifier = UIBackgroundTaskIdentifier.invalid
+
+  init(name: String) {
+    self.identifier = UIApplication.shared.beginBackgroundTask(withName: name) { [self] in
+      end()
+    }
+  }
+
+  func end() {
+    guard identifier != .invalid else { return }
+    UIApplication.shared.endBackgroundTask(identifier)
+    identifier = .invalid
   }
 }
