@@ -669,11 +669,15 @@ class GenericDetailTableHeader: UIView {
     // (playlists, podcasts, genres) keep the standard .small.
     if entityContainer is Artist {
       entityImage.shape = .circle
-    } else if entityContainer is Album {
-      entityImage.shape = .rounded(.verySmall)
     } else {
-      entityImage.shape = .rounded(.small)
+      entityImage.shape = .rounded(heroCornerRadius(for: entityContainer))
     }
+  }
+
+  /// The hero's corner: an album's 3pt, everything else 5pt. `refresh()` hands it to
+  /// `display`, which otherwise puts every cover back to 5pt (BUG-454).
+  private func heroCornerRadius(for entityContainer: PlayableContainable) -> CornerRadius {
+    entityContainer is Album ? .verySmall : .small
   }
 
   private var isCompactWidth: Bool {
@@ -836,7 +840,11 @@ class GenericDetailTableHeader: UIView {
     let entityContainer = config.entityContainer
     let theme = appDelegate.storage.settings.accounts.getSetting(entityContainer.account?.info).read
       .themePreference
-    entityImage.display(theme: theme, container: entityContainer)
+    entityImage.display(
+      theme: theme,
+      container: entityContainer,
+      cornerRadius: heroCornerRadius(for: entityContainer)
+    )
 
     let layout = heroLayout
     let tint = coverTint ?? .neutral
@@ -1084,7 +1092,7 @@ class GenericDetailTableHeader: UIView {
       if case .circle = entityImage.shape {
         return UIBezierPath(ovalIn: bounds)
       }
-      // The radius actually drawn (refresh() repaints the cover at .small).
+      // The radius actually drawn (an album's 3pt, else 5pt).
       return UIBezierPath(roundedRect: bounds, cornerRadius: entityImage.layer.cornerRadius)
     }
     let tinted = DetailCoverShadowView()
