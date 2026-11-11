@@ -65,8 +65,19 @@ extension CarPlaySceneDelegate {
       buttons.append(repeatButton)
       // cassette (favorites rip-out): the CarPlay now-playing favorite (heart)
       // button was removed. Shuffle + repeat remain.
+      // cassette (keep playing): ∞ after Repeat, as the phone's queue head has the three. Lit
+      // while keep playing acts (on, repeat off); a press follows the phone's rule.
+      let keepPlayingButton = CPNowPlayingImageButton(
+        image: CassetteIcon.keepPlaying.symbolImage
+      ) { [weak self] _ in
+        self?.keepPlayingButtonPressed()
+      }
+      keepPlayingButton.isSelected = KeepPlaying.shared.isActive(repeatMode: appDelegate.player.repeatMode)
+      keepPlayingNowPlayingButton = keepPlayingButton
+      buttons.append(keepPlayingButton)
     } else {
       buttons.append(repeatButton)
+      keepPlayingNowPlayingButton = nil
     }
     // Cassette CarPlay: the playback-speed multiplier only makes sense for
     // spoken-word content. Cassette surfaces podcasts as a real, playable
@@ -97,11 +108,40 @@ extension CarPlaySceneDelegate {
         })
       )
     }
+    nowPlayingButtons = buttons
     CPNowPlayingTemplate.shared.updateNowPlayingButtons(buttons)
     CPNowPlayingTemplate.shared.isUpNextButtonEnabled = true
     // cassette 2026-10-20 (driving pass): the artist and album line on Now Playing is a
     // button, and it opens the playing artist's page: get around from what is on.
     CPNowPlayingTemplate.shared.isAlbumArtistButtonEnabled = mode == .music
+  }
+
+  /// The phone's rule (PlayerUIHandler.keepPlayingButtonPushed): while keep playing waits on
+  /// repeat, a press turns repeat off so keep playing takes over; otherwise it flips the switch.
+  func keepPlayingButtonPressed() {
+    let keepPlaying = KeepPlaying.shared
+    if keepPlaying.isOn, appDelegate.player.repeatMode != .off {
+      appDelegate.player.setRepeatMode(.off)
+    } else {
+      keepPlaying.isOn.toggle()
+    }
+    refreshKeepPlayingButton()
+  }
+
+  /// Light the ∞ as keep playing and repeat now stand. Only when its state changed is the row
+  /// handed to CarPlay again (with the same buttons), so a track change never redraws it.
+  func refreshKeepPlayingButton() {
+    guard interfaceController != nil, let button = keepPlayingNowPlayingButton else { return }
+    let lit = KeepPlaying.shared.isActive(repeatMode: appDelegate.player.repeatMode)
+    guard button.isSelected != lit else { return }
+    button.isSelected = lit
+    CPNowPlayingTemplate.shared.updateNowPlayingButtons(nowPlayingButtons)
+  }
+
+  /// Keep playing switched anywhere (posted on the main actor).
+  @objc
+  func keepPlayingChanged() {
+    refreshKeepPlayingButton()
   }
 
   func displayNowPlaying(immediately: Bool = false, completion: @escaping (() -> ())) {
@@ -254,7 +294,10 @@ extension CarPlaySceneDelegate: MusicPlayable {
 
   func didArtworkChange() {}
   func didShuffleChange() {}
-  func didRepeatChange() {}
+  /// Repeat on holds keep playing back (its ∞ goes dark); repeat off lets it act again.
+  func didRepeatChange() {
+    refreshKeepPlayingButton()
+  }
   func didPlaybackRateChange() {}
 }
 

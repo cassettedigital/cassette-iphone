@@ -70,6 +70,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
   /// repeat/shuffle selection + scrubber. Reset on disconnect so a fresh connect
   /// re-pushes the buttons onto the new template.
   var lastConfiguredNowPlayingMode: PlayerMode?
+  /// The now-playing buttons last handed to CarPlay, and the Keep playing (∞) one among them,
+  /// whose lit state follows keep playing and repeat without rebuilding the row on a track change.
+  var nowPlayingButtons: [CPNowPlayingButton] = []
+  var keepPlayingNowPlayingButton: CPNowPlayingImageButton?
 
   var interfaceController: CPInterfaceController?
   var traits: UITraitCollection {
@@ -145,6 +149,13 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         self,
         selector: #selector(libraryMoodsChanged),
         name: .cassetteLibraryMoodsChanged,
+        object: nil
+      )
+      // Keep playing switched anywhere (the phone's queue head, the car's ∞): light the car's ∞.
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(keepPlayingChanged),
+        name: KeepPlaying.didChange,
         object: nil
       )
       accountNotificationHandler = AccountNotificationHandler(
@@ -332,6 +343,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         object: nil
       )
       appDelegate.notificationHandler.remove(self, name: .cassetteLibraryMoodsChanged, object: nil)
+      NotificationCenter.default.removeObserver(self, name: KeepPlaying.didChange, object: nil)
       accountNotificationHandler?.performOnAllRegisteredAccounts { [weak self] accountInfo in
         guard let self else { return }
         let meta = appDelegate.getMeta(accountInfo)
@@ -353,6 +365,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
       CPNowPlayingTemplate.shared.remove(self)
       // Force the next connect to re-push the button row onto the fresh template.
       lastConfiguredNowPlayingMode = nil
+      nowPlayingButtons = []
+      keepPlayingNowPlayingButton = nil
 
       endSession()
       // Nothing account-scoped outlives the connection: without this the handler kept
