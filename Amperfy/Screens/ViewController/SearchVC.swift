@@ -971,7 +971,7 @@ class SearchVC: BasicTableViewController {
         albumSlug: slug,
         title: hit.kind == .album ? hit.title : hit.albumTitle,
         placeholder: hit.imageUrl.flatMap {
-          RadioArtLoader.shared.cachedImage(for: $0, maxPixel: RadioArtLoader.rowPixel)
+          CassetteImageLoader.shared.cachedImage(for: $0, maxPixel: CassetteImageLoader.rowPixel)
         },
         account: account,
         show: push
@@ -2433,12 +2433,12 @@ final class CatalogHitCell: UITableViewCell {
     represented = hit.imageUrl
     guard let src = hit.imageUrl, !src.isEmpty else { return }
     // A 48pt square: decoded at the row's size, not the cover's (BUG-818).
-    if let cached = RadioArtLoader.shared.cachedImage(for: src, maxPixel: RadioArtLoader.rowPixel) {
+    if let cached = CassetteImageLoader.shared.cachedImage(for: src, maxPixel: CassetteImageLoader.rowPixel) {
       art.image = cached
       return
     }
     Task { @MainActor [weak self] in
-      let loaded = await RadioArtLoader.shared.image(for: src, maxPixel: RadioArtLoader.rowPixel)
+      let loaded = await CassetteImageLoader.shared.image(for: src, maxPixel: CassetteImageLoader.rowPixel)
       guard let self, represented == src else { return }
       art.image = loaded
     }

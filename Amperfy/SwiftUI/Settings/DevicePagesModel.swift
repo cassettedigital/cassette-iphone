@@ -56,12 +56,13 @@ import UIKit
     /// The local cover, when the album's songs are still in the library.
     let coverPath: String?
 
-    /// The cloud's cover, used only when there is no local one.
-    var remoteURL: URL? {
+    /// The cloud's cover, used only when there is no local one: its address, and the ladder
+    /// reference the cloud sent beside it (CassetteImageLoader picks the rung from that).
+    var remoteCover: (address: String, ref: CassetteImageRef?)? {
       [row.coverOverrideUrl, row.coverArtSmallUrl, row.coverArtUrl]
         .compactMap { $0 }
         .first { !$0.isEmpty }
-        .flatMap { URL(string: $0) }
+        .map { ($0, row.cover) }
     }
   }
 
@@ -604,27 +605,38 @@ import UIKit
   // MARK: - DeviceCoverView
 
   /// A local album cover at `side` points; the cloud's cover for an album no longer on the
-  /// phone; else the letter placeholder (Barlow ExtraBold 28, ink3 on bg3).
+  /// phone (from the ladder at the tile's rung, kept on the phone so it shows offline too); else
+  /// the letter placeholder (Barlow ExtraBold 28, ink3 on bg3).
   struct DeviceCoverView: View {
     let path: String?
     let title: String
     let side: CGFloat
     let radius: CGFloat
-    let remoteURL: URL?
+    let remote: (address: String, ref: CassetteImageRef?)?
 
     @State
     private var image: UIImage?
 
-    init(path: String?, title: String, side: CGFloat, radius: CGFloat, remoteURL: URL? = nil) {
+    init(
+      path: String?,
+      title: String,
+      side: CGFloat,
+      radius: CGFloat,
+      remote: (address: String, ref: CassetteImageRef?)? = nil
+    ) {
       self.path = path
       self.title = title
       self.side = side
       self.radius = radius
-      self.remoteURL = remoteURL
-      _image = State(initialValue: DeviceCoverCache.cached(
-        path: path,
-        maxPixel: Self.maxPixel(side)
-      ))
+      self.remote = remote
+      _image = State(initialValue: path != nil
+        ? DeviceCoverCache.cached(path: path, maxPixel: Self.maxPixel(side))
+        : remote.flatMap {
+          CassetteImageLoader.shared.cachedImage(
+            for: $0.address,
+            maxPixel: CassetteImageLoader.rung(side: side)
+          )
+        })
     }
 
     private static func maxPixel(_ side: CGFloat) -> Int {
@@ -638,24 +650,20 @@ import UIKit
           Image(uiImage: image)
             .resizable()
             .scaledToFill()
-        } else if path == nil, let remoteURL {
-          AsyncImage(url: remoteURL) { phase in
-            if let remote = phase.image {
-              remote.resizable().scaledToFill()
-            } else {
-              letter
-            }
-          }
         } else {
           letter
         }
       }
       .frame(width: side, height: side)
       .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-      .task(id: path) {
-        guard let path else { return }
-        if let loaded = await DeviceCoverCache.image(path: path, maxPixel: Self.maxPixel(side)) {
-          image = loaded
+      .task(id: path ?? remote?.address) {
+        if let path {
+          if let loaded = await DeviceCoverCache.image(path: path, maxPixel: Self.maxPixel(side)) {
+            image = loaded
+          }
+        } else if let remote, image == nil {
+          CassetteImageLoader.shared.register(remote.address, remote.ref)
+          image = await CassetteImageLoader.shared.image(for: remote.address, side: side, keep: true)
         }
       }
     }

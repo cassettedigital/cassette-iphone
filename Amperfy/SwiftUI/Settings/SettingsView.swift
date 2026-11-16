@@ -403,11 +403,10 @@ struct SettingsView: View {
         photo = nil
         photoURL = urlString
       }
-      // The photo loads as the nav chip's does (URLSession's cache makes a reopen cheap).
-      guard let urlString, let url = URL(string: urlString) else { return }
+      // The photo loads as the nav chip's does, kept on the phone (CassetteImageLoader).
+      guard urlString != nil else { return }
       Task {
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let image = UIImage(data: data),
+        guard let image = await CassetteImageLoader.shared.accountPhoto(side: 56),
               CassetteSyncAPI.accountImage == urlString
         else { return }
         photo = image

@@ -808,7 +808,7 @@ extension CarPlaySceneDelegate {
 
   /// The station's logo when it is already in memory, else a word picture in its colour.
   private func radioArt(info: RadioCatalogStation?, name: String, slot: CarPlayStyle.Slot) -> UIImage {
-    if let url = info?.image, !url.isEmpty, let logo = RadioArtLoader.shared.cachedImage(for: url) {
+    if let url = info?.image, !url.isEmpty, let logo = CassetteImageLoader.shared.cachedImage(for: url) {
       return style.artwork(logo, kind: .radio, name: name, slot: slot)
     }
     let color = info.flatMap { UIColor(cassetteHexString: $0.accent) }
@@ -824,10 +824,10 @@ extension CarPlaySceneDelegate {
     slot: CarPlayStyle.Slot,
     apply: @escaping (UIImage) -> ()
   ) {
-    guard let url = info?.image, !url.isEmpty, RadioArtLoader.shared.cachedImage(for: url) == nil
+    guard let url = info?.image, !url.isEmpty, CassetteImageLoader.shared.cachedImage(for: url) == nil
     else { return }
     Task { @MainActor [weak self] in
-      guard let logo = await RadioArtLoader.shared.image(for: url), let self else { return }
+      guard let logo = await CassetteImageLoader.shared.image(for: url), let self else { return }
       apply(self.style.artwork(logo, kind: .radio, name: name, slot: slot))
     }
   }

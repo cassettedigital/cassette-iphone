@@ -257,15 +257,17 @@ struct MixCoverArt: View {
 
 // MARK: - MixCoverCache
 
-/// The mood mixes' drawn covers, which cassette.digital draws (/api/covers/mix/{key}): one
-/// 900px JPEG per address, saved under Caches so CarPlay and an offline launch read it from
-/// disk, decoded once into memory. An address is fetched once per process; a failure backs
+/// The mood mixes' drawn covers, which cassette.digital draws (/api/covers/mix/{key}) at the
+/// size asked: one JPEG per address, saved under Caches so CarPlay and an offline launch read it
+/// from disk, decoded once into memory. They are drawn, not stored, so they are not on the image
+/// ladder's edge; they are asked at a ladder rung all the same (image ladder Phase 4): one file at
+/// the Home tile's rung serves the tile, Library's rows and CarPlay, and the mix page asks its own. An address is fetched once per process; a failure backs
 /// off (a minute, doubling to an hour) rather than retrying; a copy older than a week is
 /// shown while a fresh one is fetched behind it. Five covers a day at most.
 @MainActor
 enum MixCoverCache {
-  /// One size serves the Home tile, the mix page (240pt at 3x) and CarPlay.
-  static let pixelSize = 900
+  /// Frames this size or smaller share the tile's file.
+  static let tileSide: CGFloat = MoodDoorTile.side
   private static let freshFor: TimeInterval = 7 * 86400
 
   private static var base: String {
@@ -285,15 +287,22 @@ enum MixCoverCache {
 
   /// A mood mix's cover address, or nil for the other playlists (or a mix built before it
   /// had a cover version).
-  static func address(for mix: HomeManager.MadeForYouMix) -> URL? {
+  static func address(for mix: HomeManager.MadeForYouMix, side: CGFloat = tileSide) -> URL? {
     guard case let .mood(key, _) = mix.kind, let variant = mix.coverVariant else { return nil }
-    return address(key: key, variant: variant)
+    return address(key: key, variant: variant, side: side)
   }
 
   /// A mood mix's cover address by its key and the day's variant (Put something on's Focus
-  /// and Wind down tiles are those mixes).
-  static func address(key: String, variant: String) -> URL? {
-    URL(string: "\(base)/api/covers/mix/\(key)?variant=\(variant)&s=\(pixelSize)")
+  /// and Wind down tiles are those mixes), at the rung a frame of `side` points needs.
+  static func address(key: String, variant: String, side: CGFloat = tileSide) -> URL? {
+    let rung = CassetteImageLoader.rung(side: max(side, tileSide))
+    return URL(string: "\(base)/api/covers/mix/\(key)?variant=\(variant)&s=\(rung)")
+  }
+
+  /// The size an address was asked at, which is the size it is decoded at.
+  private static func pixels(of address: URL) -> Int {
+    URLComponents(url: address, resolvingAgainstBaseURL: false)?.queryItems?
+      .first { $0.name == "s" }?.value.flatMap(Int.init) ?? CassetteImageLoader.rung(forPixels: .max)
   }
 
   /// The cover already decoded in memory.
@@ -322,7 +331,7 @@ enum MixCoverCache {
     if let hit = cached(address) { return hit }
     if let file = fileURL(for: address), FileManager.default.fileExists(atPath: file.path) {
       let path = file.path
-      let size = pixelSize
+      let size = pixels(of: address)
       let image = await Task.detached(priority: .utility) {
         AmbientSourceDecoder.thumbnail(contentsOfFile: path, maxPixelSize: size)
       }.value
@@ -360,7 +369,7 @@ enum MixCoverCache {
         let (data, response) = try await URLSession.shared.data(from: address)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         let path = file.path
-        let size = pixelSize
+        let size = pixels(of: address)
         let image = await Task.detached(priority: .utility) { () -> UIImage? in
           do {
             try data.write(to: URL(fileURLWithPath: path), options: .atomic)

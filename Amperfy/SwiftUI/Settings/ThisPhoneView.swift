@@ -304,7 +304,7 @@ import SwiftUI
                     title: tile.row.albumName,
                     side: 150,
                     radius: CassetteRadius.artworkTile,
-                    remoteURL: tile.remoteURL
+                    remote: tile.remoteCover
                   )
                   .opacity(model.puttingBack.contains(tile.id) ? 0.5 : 1)
                   .padding(.bottom, 6)

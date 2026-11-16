@@ -170,6 +170,8 @@ final class RadioCatalog {
   private func adopt(data: Data) -> Bool {
     guard let payload = try? JSONDecoder().decode(RadioCatalogPayload.self, from: data),
           payload.version == 1, !payload.stations.isEmpty else { return false }
+    // the stations' marks on the image ladder, beside their plain addresses (the bundled copy has none)
+    CassetteImageLoader.shared.registerRefs(inJSON: data)
     var map: [String: RadioCatalogStation] = [:]
     for s in payload.stations { map[Self.normalize(s.streamUrl)] = s }
     byStreamUrl = map
@@ -393,83 +395,8 @@ final class RadioSaved {
   }
 }
 
-// MARK: - RadioArtLoader
-
-@MainActor
-final class RadioArtLoader {
-  static let shared = RadioArtLoader()
-  private let cache = NSCache<NSString, UIImage>()
-  private var inFlight = [String: Task<UIImage?, Never>]()
-  private init() {
-    cache.countLimit = 200
-    // cassette (BUG-818): and by bytes. Search's catalog covers came in at full size, up to
-    // 3000px (36 MB each once decoded), and three searches added about 90 MB.
-    cache.totalCostLimit = 24 * 1024 * 1024
-  }
-
-  /// The largest picture kept: the station page's 240pt picture at 3x. Home's 150pt tiles and
-  /// CarPlay draw the same bitmap smaller.
-  static let maxPixel = 720
-  /// Search's 48pt rows, at 3x with room to spare.
-  static let rowPixel = 240
-
-  private static func key(_ urlString: String, _ maxPixel: Int) -> String {
-    maxPixel == Self.maxPixel ? urlString : "\(urlString)|\(maxPixel)"
-  }
-
-  /// The logo when it is already in memory, with no fetch: a rebuilt CarPlay row shows it at
-  /// once instead of flashing the word picture first.
-  func cachedImage(for urlString: String, maxPixel: Int = RadioArtLoader.maxPixel) -> UIImage? {
-    cache.object(forKey: Self.key(urlString, maxPixel) as NSString)
-  }
-
-  /// Big enough to stand for the station on a Home tile (150pt) and everywhere smaller: at
-  /// least 150 pixels on its short side. A smaller logo stretched up is a blur, so the station
-  /// keeps its word art, the same everywhere it appears (I-V13).
-  static func isSharp(_ image: UIImage) -> Bool {
-    min(image.size.width, image.size.height) * image.scale >= 150
-  }
-
-  /// The picture at `urlString`, decoded off the main thread no larger than `maxPixel` on its
-  /// longest side; one fetch per picture and size at a time.
-  func image(for urlString: String, maxPixel: Int = RadioArtLoader.maxPixel) async -> UIImage? {
-    let key = Self.key(urlString, maxPixel)
-    if let hit = cache.object(forKey: key as NSString) { return hit }
-    if let running = inFlight[key] { return await running.value }
-    guard let url = URL(string: urlString) else { return nil }
-    let task = Task<UIImage?, Never> {
-      var request = URLRequest(url: url)
-      request.timeoutInterval = 12
-      guard let (data, response) = try? await URLSession.shared.data(for: request),
-            (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-      return await Task.detached(priority: .userInitiated) {
-        Self.downsampled(data, maxPixel: maxPixel)
-      }.value
-    }
-    inFlight[key] = task
-    let image = await task.value
-    inFlight[key] = nil
-    if let image {
-      let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
-      cache.setObject(image, forKey: key as NSString, cost: cost)
-    }
-    return image
-  }
-
-  /// Decoded now, not on the main thread at first draw, and never larger than it shows.
-  nonisolated private static func downsampled(_ data: Data, maxPixel: Int) -> UIImage? {
-    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-    let options: [CFString: Any] = [
-      kCGImageSourceCreateThumbnailFromImageAlways: true,
-      kCGImageSourceCreateThumbnailWithTransform: true,
-      kCGImageSourceShouldCacheImmediately: true,
-      kCGImageSourceThumbnailMaxPixelSize: maxPixel,
-    ]
-    guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-    else { return nil }
-    return UIImage(cgImage: cgImage)
-  }
-}
+// Station art loads through CassetteImageLoader (CassetteImageLoader.swift), the one loader
+// for cloud pictures (image ladder Phase 4).
 
 // MARK: - RadioLiveFeed
 
@@ -553,9 +480,10 @@ final class RadioLiveFeed: MusicPlayable {
             let payload = try? JSONDecoder().decode(Payload.self, from: data),
             payload.station == slug
       else { return }
+      CassetteImageLoader.shared.registerRefs(inJSON: data)
       let info = payload.liveInfo
       var art: UIImage?
-      if let src = info.artworkURL { art = await RadioArtLoader.shared.image(for: src) }
+      if let src = info.artworkURL { art = await CassetteImageLoader.shared.image(for: src) }
       // Still the same station by the time the answer and its picture landed?
       guard self.slug == slug else { return }
       self.player?.setRadioLive(info, artwork: art, forStreamUrl: streamUrl)
@@ -897,14 +825,15 @@ final class RadioStationCell: UITableViewCell {
     )
     if let image = row.info?.image, !image.isEmpty {
       representedImage = image
-      if let cached = RadioArtLoader.shared.cachedImage(for: image) {
-        if RadioArtLoader.isSharp(cached) { art.image = cached }
+      let pixels = CassetteImageLoader.markPixel(side: Self.artSide)
+      if let cached = CassetteImageLoader.shared.cachedImage(for: image, maxPixel: pixels) {
+        if CassetteImageLoader.isSharp(cached) { art.image = cached }
         return
       }
       loadTask = Task { @MainActor [weak self] in
-        let loaded = await RadioArtLoader.shared.image(for: image)
+        let loaded = await CassetteImageLoader.shared.image(for: image, maxPixel: pixels)
         guard let self, representedImage == image, let loaded,
-              RadioArtLoader.isSharp(loaded) else { return }
+              CassetteImageLoader.isSharp(loaded) else { return }
         UIView.transition(with: art, duration: 0.2, options: .transitionCrossDissolve) {
           self.art.image = loaded
         }
@@ -1356,11 +1285,11 @@ enum RadioMark {
     -> (image: UIImage, key: String) {
     let info = RadioCatalog.shared.station(forStreamUrl: radio.url)
     if let src = info?.image, !src.isEmpty {
-      if let cached = RadioArtLoader.shared.cachedImage(for: src) {
-        if RadioArtLoader.isSharp(cached) { return (cached, "mark:\(src)") }
+      if let cached = CassetteImageLoader.shared.cachedImage(for: src) {
+        if CassetteImageLoader.isSharp(cached) { return (cached, "mark:\(src)") }
       } else if let loadIfNeeded {
         Task { @MainActor in
-          if await RadioArtLoader.shared.image(for: src) != nil { loadIfNeeded() }
+          if await CassetteImageLoader.shared.image(for: src) != nil { loadIfNeeded() }
         }
       }
     }
@@ -1643,13 +1572,14 @@ final class RadioShelfCell: UICollectionViewCell {
     )
     if let image = info?.image, !image.isEmpty {
       representedImage = image
-      if let cached = RadioArtLoader.shared.cachedImage(for: image) {
-        if RadioArtLoader.isSharp(cached) { art.image = cached }
+      let pixels = CassetteImageLoader.markPixel(side: side)
+      if let cached = CassetteImageLoader.shared.cachedImage(for: image, maxPixel: pixels) {
+        if CassetteImageLoader.isSharp(cached) { art.image = cached }
         return
       }
       loadTask = Task { @MainActor [weak self] in
-        let loaded = await RadioArtLoader.shared.image(for: image)
-        guard let self, representedImage == image, let loaded, RadioArtLoader.isSharp(loaded)
+        let loaded = await CassetteImageLoader.shared.image(for: image, maxPixel: pixels)
+        guard let self, representedImage == image, let loaded, CassetteImageLoader.isSharp(loaded)
         else { return }
         // A short fade, so the logo arrives rather than pops over the word picture.
         UIView.transition(with: art, duration: 0.2, options: .transitionCrossDissolve) {

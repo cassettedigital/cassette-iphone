@@ -439,10 +439,17 @@ final class MixHeroView: UIView {
     if case let .mood(key, hexColor) = mix.kind {
       // The drawn cover when it is already here, else the mood's own art, crossfading to
       // the cover when it lands.
-      let address = MixCoverCache.address(for: mix)
+      // The page's own rung; the Home tile's copy (memory, else disk) shows until it lands.
+      let address = MixCoverCache.address(for: mix, side: Self.artSide)
+      let tile = MixCoverCache.address(for: mix)
       if let address, let cover = MixCoverCache.cached(address) {
         moodArtImage = cover
         moodArtKey = "made-for-you-cover:\(address.absoluteString)"
+      } else if let tile,
+                let cover = MixCoverCache.cached(tile)
+                ?? MixCoverCache.diskImage(tile, maxPixelSize: CassetteImageLoader.rung(side: Self.artSide)) {
+        moodArtImage = cover
+        moodArtKey = "made-for-you-cover:\(tile.absoluteString)"
       } else {
         let renderer = ImageRenderer(
           content: MoodMixArt(key: key, hexColor: hexColor)

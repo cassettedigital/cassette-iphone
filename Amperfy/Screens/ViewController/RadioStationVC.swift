@@ -392,15 +392,15 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       lighter.lightUp(image: wordArt, key: "radio-word:\(station.slug)")
       return
     }
-    if let cached = RadioArtLoader.shared.cachedImage(for: src), RadioArtLoader.isSharp(cached) {
+    if let cached = CassetteImageLoader.shared.cachedImage(for: src), CassetteImageLoader.isSharp(cached) {
       art.image = cached
       lighter.lightUp(image: cached, key: "radio:\(src)")
       return
     }
     Task { @MainActor [weak self] in
-      let loaded = await RadioArtLoader.shared.image(for: src)
+      let loaded = await CassetteImageLoader.shared.image(for: src)
       guard let self else { return }
-      if let loaded, RadioArtLoader.isSharp(loaded) {
+      if let loaded, CassetteImageLoader.isSharp(loaded) {
         art.image = loaded
         lighter.lightUp(image: loaded, key: "radio:\(src)")
       } else {
@@ -561,6 +561,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
          (response as? HTTPURLResponse)?.statusCode == 200,
          let payload = try? JSONDecoder().decode(RadioStationPagePayload.self, from: data) {
         guard let self else { return }
+        CassetteImageLoader.shared.registerRefs(inJSON: data)
         loadedOnce = true
         live = payload.live
         liveAskedAt = asked
@@ -586,6 +587,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
           (response as? HTTPURLResponse)?.statusCode == 200,
           let live = try? JSONDecoder().decode(RadioStationPagePayload.Live.self, from: data)
     else { return }
+    CassetteImageLoader.shared.registerRefs(inJSON: data)
     self.live = live
     liveAskedAt = asked
     drawLive()
@@ -697,11 +699,12 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
     picture.widthAnchor.constraint(equalToConstant: side).isActive = true
     picture.heightAnchor.constraint(equalToConstant: side).isActive = true
     if let src, !src.isEmpty {
-      if let cached = RadioArtLoader.shared.cachedImage(for: src) {
+      let pixels = CassetteImageLoader.rung(side: side)
+      if let cached = CassetteImageLoader.shared.cachedImage(for: src, maxPixel: pixels) {
         picture.image = cached
       } else {
         Task { @MainActor [weak picture] in
-          picture?.image = await RadioArtLoader.shared.image(for: src)
+          picture?.image = await CassetteImageLoader.shared.image(for: src, maxPixel: pixels)
         }
       }
     }
@@ -815,7 +818,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
     RecordOpener.open(
       albumSlug: match.albumSlug,
       title: match.title,
-      placeholder: cover.flatMap { RadioArtLoader.shared.cachedImage(for: $0) },
+      placeholder: cover.flatMap { CassetteImageLoader.shared.anyCachedImage(for: $0) },
       account: account
     ) { [weak self] vc in
       self?.push(vc)

@@ -75,12 +75,12 @@ private enum CassetteMenuAvatar {
       url = current
       photo = nil
     }
-    guard let current, photo == nil, !inFlight, let remote = URL(string: current) else { return }
+    guard let current, photo == nil, !inFlight else { return }
     inFlight = true
     Task {
-      let data = try? await URLSession.shared.data(from: remote).0
+      let image = await CassetteImageLoader.shared.accountPhoto(side: side)
       inFlight = false
-      guard url == current, let data, let image = UIImage(data: data) else { return }
+      guard url == current, let image else { return }
       photo = circle(image)
     }
   }
@@ -263,13 +263,10 @@ extension UIViewController {
     navigationItem.leftBarButtonItem = userBarButtonItem!
 
     // Photo loads async; swap in when ready so the chip updates without a relaunch.
-    if let urlString = CassetteSyncAPI.accountImage, let url = URL(string: urlString) {
+    if CassetteSyncAPI.accountImage != nil {
       Task { [weak button] in
-        guard let (data, _) = try? await URLSession.shared.data(from: url),
-              let photo = UIImage(data: data) else { return }
-        await MainActor.run {
-          button?.setImage(Self.fittedAvatarPhoto(photo, size: size), for: .normal)
-        }
+        guard let photo = await CassetteImageLoader.shared.accountPhoto(side: size) else { return }
+        button?.setImage(Self.fittedAvatarPhoto(photo, size: size), for: .normal)
       }
     }
 
@@ -288,13 +285,10 @@ extension UIViewController {
       MainActor.assumeIsolated {
         guard let button else { return }
         button.setImage(Self.cassetteAccountAvatarImage(size: size), for: .normal)
-        if let urlString = CassetteSyncAPI.accountImage, let url = URL(string: urlString) {
+        if CassetteSyncAPI.accountImage != nil {
           Task { [weak button] in
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let photo = UIImage(data: data) else { return }
-            await MainActor.run {
-              button?.setImage(Self.fittedAvatarPhoto(photo, size: size), for: .normal)
-            }
+            guard let photo = await CassetteImageLoader.shared.accountPhoto(side: size) else { return }
+            button?.setImage(Self.fittedAvatarPhoto(photo, size: size), for: .normal)
           }
         }
       }

@@ -414,6 +414,13 @@ public struct CassetteImageRef: Sendable, Decodable, Equatable {
   public let h: Int?
   public let kind: String?
 
+  public init(src: String, w: Int? = nil, h: Int? = nil, kind: String? = nil) {
+    self.src = src
+    self.w = w
+    self.h = h
+    self.kind = kind
+  }
+
   /// The address of `rung`, or nil when `src` is not a ladder template.
   public func url(rung: Int) -> String? {
     guard src.contains("{rung}") else { return nil }
@@ -622,6 +629,9 @@ public struct CassetteAccount: Sendable, Decodable {
   /// Profile photo URL when set; null falls back to avatarPreset. Optional
   /// decode so older deploys keep the silhouette glyph.
   public let image: String?
+  /// The same photo on the image ladder (servers from 2026-11-16); nil when the ladder cannot
+  /// serve it, and the phone then loads `image`.
+  public let imageRef: CassetteImageRef?
   /// Default disc when image is null: silhouette | initials | color id.
   /// Optional decode → "silhouette" (the existing person glyph).
   public let avatarPreset: String
@@ -658,7 +668,7 @@ public struct CassetteAccount: Sendable, Decodable {
   public let lanTlsPin: String?
 
   enum CodingKeys: String, CodingKey {
-    case email, name, image, avatarPreset, serverMode, sidecarPort, downloadQuality,
+    case email, name, image, imageRef, avatarPreset, serverMode, sidecarPort, downloadQuality,
          diagnosticsConsent, isBetaTester, lanTlsPin
   }
 
@@ -667,6 +677,8 @@ public struct CassetteAccount: Sendable, Decodable {
     self.email = try c.decode(String.self, forKey: .email)
     self.name = try c.decodeIfPresent(String.self, forKey: .name)
     self.image = try c.decodeIfPresent(String.self, forKey: .image)
+    // a reference the phone cannot read is no reason to lose the account
+    self.imageRef = (try? c.decodeIfPresent(CassetteImageRef.self, forKey: .imageRef)) ?? nil
     self.avatarPreset = try c.decodeIfPresent(String.self, forKey: .avatarPreset) ?? "silhouette"
     self.serverMode = try c.decodeIfPresent(Bool.self, forKey: .serverMode) ?? false
     self.sidecarPort = try c.decodeIfPresent(Int.self, forKey: .sidecarPort)
@@ -751,6 +763,8 @@ public struct CassetteDeviceSummary: Sendable, Decodable {
     public let coverArtSmallUrl: String?
     public let coverArtUrl: String?
     public let coverOverrideUrl: String?
+    /// The cover on the image ladder (servers from 2026-11-16), for drawing it at the tile's size.
+    public let cover: CassetteImageRef?
     public let localCoverTrackId: String?
     /// The exclusion marks to clear (DELETE /api/sync/marks/exclude) to put it back.
     public let excludeTargetIds: [String]
@@ -907,6 +921,7 @@ public final class CassetteSyncAPI: @unchecked Sendable {
   nonisolated private static let accountNameKey = "cassette.accountName"
   nonisolated private static let accountEmailKey = "cassette.accountEmail"
   nonisolated private static let accountImageKey = "cassette.accountImage"
+  nonisolated private static let accountImageRefKey = "cassette.accountImageRef"
   nonisolated private static let accountAvatarPresetKey = "cassette.accountAvatarPreset"
   nonisolated private static let sidecarPortKey = "cassette.sidecarPort"
   /// Cassette Phase 2b: last-known account-sourced download quality tier, read by
@@ -936,6 +951,14 @@ public final class CassetteSyncAPI: @unchecked Sendable {
   public static var accountImage: String? {
     let value = UserDefaults.standard.string(forKey: accountImageKey)
     return (value?.isEmpty == false) ? value : nil
+  }
+
+  /// The profile photo on the image ladder, kept beside `accountImage`; nil when the cloud sent
+  /// none (an older server, or a photo the ladder cannot serve).
+  public static var accountImageRef: CassetteImageRef? {
+    guard accountImage != nil, let src = UserDefaults.standard.string(forKey: accountImageRefKey),
+          !src.isEmpty else { return nil }
+    return CassetteImageRef(src: src, kind: "avatar")
   }
 
   /// Default disc id when there is no photo (`silhouette` when unset).
@@ -991,7 +1014,7 @@ public final class CassetteSyncAPI: @unchecked Sendable {
     SecureSettingsStore.setString(nil, forKey: PersistentStorage.UserDefaultsKey.CassetteBearerToken.rawValue)
     CassetteHubTrust.forget()
     let keys = [
-      accountNameKey, accountEmailKey, accountImageKey, accountAvatarPresetKey,
+      accountNameKey, accountEmailKey, accountImageKey, accountImageRefKey, accountAvatarPresetKey,
       sidecarPortKey, macSummaryKey, macSummaryFetchedAtKey, downloadQualityKey,
       CassetteLibraryFilterProvider.serverModeDefaultsKey,
       "cassette.isBetaTester", "cassette.lastSyncAt", "cassette.cloudPlaylistPlayedPending",
@@ -1006,7 +1029,8 @@ public final class CassetteSyncAPI: @unchecked Sendable {
     }
     // the kept Home and the made-for-you and listening files drawn from the person's library
     let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    for folder in ["CassetteHome", "CassetteMoods"] {
+    // cassette-pictures: the account photo and device-page covers CassetteImageLoader keeps
+    for folder in ["CassetteHome", "CassetteMoods", "cassette-pictures"] {
       try? FileManager.default.removeItem(at: base.appendingPathComponent(folder))
     }
   }
@@ -1032,6 +1056,11 @@ public final class CassetteSyncAPI: @unchecked Sendable {
       defaults.set(image, forKey: accountImageKey)
     } else {
       defaults.removeObject(forKey: accountImageKey)
+    }
+    if let ref = account.imageRef, account.image?.isEmpty == false {
+      defaults.set(ref.src, forKey: accountImageRefKey)
+    } else {
+      defaults.removeObject(forKey: accountImageRefKey)
     }
     defaults.set(account.avatarPreset, forKey: accountAvatarPresetKey)
 
