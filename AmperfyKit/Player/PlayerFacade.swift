@@ -220,6 +220,10 @@ public protocol PlayerFacade {
   @discardableResult
   func removeQueuedItems(where isRejected: (AbstractPlayable) -> Bool) -> Bool
   func movePlayable(from: PlayerIndex, to: PlayerIndex)
+  /// cassette (BUG-1031): call after a screen removes, moves or clears queue rows itself.
+  /// Removing and moving stay silent so the editing list can animate its own rows; this tells
+  /// every other listener, never the editor.
+  func queueEdited(by editor: MusicPlayable)
   func clearUserQueue()
   func clearContextQueue()
   func clearQueues()
@@ -617,6 +621,10 @@ class PlayerFacadeImpl: PlayerFacade {
 
   func movePlayable(from: PlayerIndex, to: PlayerIndex) {
     queueHandler.movePlayable(from: from, to: to)
+  }
+
+  func queueEdited(by editor: MusicPlayable) {
+    musicPlayer.notifyPlaylistUpdated(except: editor)
   }
 
   func clearUserQueue() {

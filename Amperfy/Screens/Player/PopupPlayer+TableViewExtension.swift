@@ -77,7 +77,7 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
     tableView.deleteRows(at: indexPaths, with: .fade)
     appDelegate.player.clearUserQueue()
     tableView.endUpdates()
-    refreshUserQueueSectionHeader()
+    queueEditedHere()
   }
 
   func convertCellViewToPlayerIndex(cell: PlayableTableCell) -> PlayerIndex? {
@@ -343,9 +343,7 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
       guard let playerIndex = PlayerIndex.create(from: indexPath) else { return }
       player.removePlayable(at: playerIndex)
       tableView.deleteRows(at: [indexPath], with: .fade)
-      if PlayerSectionCategory(rawValue: indexPath.section) == .userQueue {
-        refreshUserQueueSectionHeader()
-      }
+      queueEditedHere()
     }
   }
 
@@ -357,10 +355,8 @@ extension PopupPlayerVC: UITableViewDataSource, UITableViewDelegate {
           let toPlayerIndex = PlayerIndex.create(from: to)
     else { return }
     player.movePlayable(from: fromPlayerIndex, to: toPlayerIndex)
-    if PlayerSectionCategory(rawValue: fromIndexPath.section) == .userQueue ||
-      PlayerSectionCategory(rawValue: to.section) == .userQueue {
-      refreshUserQueueSectionHeader()
-    }
+    // UIKit is still finishing the drag here, so the redraw waits a turn.
+    DispatchQueue.main.async { [weak self] in self?.queueEditedHere() }
   }
 
   // Override to deny movment of rows to specific sections

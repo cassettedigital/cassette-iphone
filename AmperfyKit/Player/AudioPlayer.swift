@@ -519,6 +519,16 @@ public class AudioPlayer: NSObject, BackendAudioPlayerNotifiable {
     }
   }
 
+  /// cassette (BUG-1031): a screen edited the queue and already redrew its own list, so
+  /// everyone else hears about it (the Up Next heading, the mini player, CarPlay) but the
+  /// editor is not told to redraw over its own row animation.
+  func notifyPlaylistUpdated(except editor: MusicPlayable) {
+    notifierList = notifierList.filter { $0.value != nil }
+    for notifier in notifierList where notifier.value !== editor {
+      notifier.value?.didPlaylistChange()
+    }
+  }
+
   func notifyNowPlayingInfoChanged() {
     notifierList = notifierList.filter { $0.value != nil }
     for notifier in notifierList {

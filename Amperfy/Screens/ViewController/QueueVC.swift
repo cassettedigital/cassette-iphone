@@ -173,6 +173,7 @@ extension QueueVC: UITableViewDelegate, UITableViewDataSource {
     player.clearUserQueue()
     tableView?.endUpdates()
     refreshUserQueueSectionHeader()
+    player.queueEdited(by: self) // BUG-1031
   }
 
   func convertCellViewToPlayerIndex(cell: PlayableTableCell) -> PlayerIndex? {
@@ -296,6 +297,7 @@ extension QueueVC: UITableViewDelegate, UITableViewDataSource {
       if PlayerSectionCategory(rawValue: indexPath.section) == .userQueue {
         refreshUserQueueSectionHeader()
       }
+      player.queueEdited(by: self) // BUG-1031
     }
   }
 
@@ -310,6 +312,7 @@ extension QueueVC: UITableViewDelegate, UITableViewDataSource {
       PlayerSectionCategory(rawValue: to.section) == .userQueue {
       refreshUserQueueSectionHeader()
     }
+    player.queueEdited(by: self) // BUG-1031
   }
 
   // Override to deny movment of rows to specific sections

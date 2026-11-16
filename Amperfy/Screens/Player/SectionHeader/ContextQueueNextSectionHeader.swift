@@ -153,7 +153,8 @@ class ContextQueueNextSectionHeader: UIView {
   }
 
   private func refreshHeading() {
-    let answer = Self.queueAnswer(contextName: player.contextName)
+    // BUG-1031: once every song from the record is gone from Up Next, it no longer names it.
+    let answer = player.nextQueueCount == 0 ? nil : Self.queueAnswer(contextName: player.contextName)
     queueNameLabel.attributedText = CassetteHeading.attributed(
       shout: "UP NEXT",
       answer: answer,

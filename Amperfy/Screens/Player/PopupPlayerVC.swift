@@ -292,13 +292,36 @@ class PopupPlayerVC: UIViewController, UIScrollViewDelegate {
     keepPlayingPick = KeepPlaying.shared.upcoming(queue: player.keepPlayingQueue)
   }
 
-  /// The pick changed (swapped, trimmed, switched, or the mood index landed): redraw THEN
-  /// only, so the list does not jump back to the song on now.
+  /// The pick changed (swapped, trimmed, switched, or the mood index landed): redraw the
+  /// list without scrolling, so it does not jump back to the song on now.
+  ///
+  /// BUG-1030: this used to reload THEN alone. UIKit then re-checks every other section's
+  /// row count, and when the queue had changed under the table (a song ended and the queue
+  /// moved on before the sheet heard, or an edit nobody was told about) it threw and closed
+  /// the app on Swap. A whole-table reload has nothing to disagree with.
   @objc
   func keepPlayingChanged() {
     guard isViewLoaded else { return }
     refreshKeepPlayingPick()
-    tableView.reloadSections(IndexSet(integer: Self.keepPlayingSection), with: .fade)
+    tableView.reloadData()
+  }
+
+  /// BUG-1031: this list just removed, moved or cleared rows itself. Tell the rest of the app
+  /// (Up Next heading, mini player, CarPlay), fix the hand-queued heading, and redraw THEN if
+  /// the edit changed what plays when the queue runs out (it follows the last queued song).
+  func queueEditedHere() {
+    player.queueEdited(by: self)
+    refreshUserQueueSectionHeader()
+    let before = keepPlayingPick
+    refreshKeepPlayingPick()
+    if Self.pickKey(before) != Self.pickKey(keepPlayingPick) {
+      tableView.reloadData()
+    }
+  }
+
+  private static func pickKey(_ pick: KeepPlaying.Pick?) -> [String]? {
+    guard let pick else { return nil }
+    return [pick.kind.rawValue, pick.album?.id ?? ""] + pick.songs.map(\.id)
   }
 
   func scrollToCurrentlyPlayingRow() {
