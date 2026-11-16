@@ -682,18 +682,20 @@ struct RadioRow {
 
 // MARK: - RadioStationCell
 
+/// A station on the dial and in Search, the Mac's station row (the kit's StationRow, drawn by
+/// apps/cassette/src/app/components/radio/RadioDial.tsx): its mark, shaped like an app icon; its name;
+/// where it's from ("Seattle · Live"); what it sounds like, in its own words; then the play disc, or the
+/// waveform while it plays. A tap opens its page; only the disc tunes in. What a station is playing now
+/// is On now's to say, at the top of the Radio page (the founder, 2026-11-16: one Radio page on every
+/// surface).
 final class RadioStationCell: UITableViewCell {
   static let reuseId = "RadioStationCell"
 
   private let art = StationArtView()
-  private let initials = UILabel()
   private let nameLabel = UILabel()
   private let kickerLabel = UILabel()
-  /// What's on now (RadioOnNow); the station's about text stays off the list, as on its page.
   private let descLabel = UILabel()
   private let playingMark = UIImageView()
-  private var slug: String?
-  private var kicker = ""
   /// cassette 2026-10-21: the row opens the station's page; this disc tunes in at once
   /// (the same one-tap play disc the record tiles wear).
   private let playButton = AlbumCollectionCell.makePlayOverlayButton()
@@ -715,10 +717,6 @@ final class RadioStationCell: UITableViewCell {
     art.layer.borderWidth = 1
     art.cassetteOnAppearanceChange { $0.layer.borderColor = CassetteTheme.UIColors.ink4.cgColor }
 
-    initials.font = UIFont.cassette(.rowTitle)
-    initials.textColor = CassetteTheme.UIColors.ink
-    initials.textAlignment = .center
-
     nameLabel.font = UIFont.cassette(.rowTitle)
     nameLabel.textColor = CassetteTheme.UIColors.ink
     nameLabel.numberOfLines = 1
@@ -727,48 +725,40 @@ final class RadioStationCell: UITableViewCell {
     kickerLabel.textColor = CassetteTheme.UIColors.ink2
     kickerLabel.numberOfLines = 1
 
-    descLabel.font = UIFont.cassette(.metadata)
-    descLabel.textColor = CassetteTheme.UIColors.ink2
-    descLabel.numberOfLines = 1
-    kickerLabel.textColor = CassetteTheme.UIColors.ink3
+    // the kit's .stDesc: the body face at 13, the quietest ink, two lines at most
+    descLabel.textColor = CassetteTheme.UIColors.ink3
+    descLabel.numberOfLines = 2
 
     playingMark.image = UIImage(systemName: "waveform")
     playingMark.tintColor = CassetteTheme.UIColors.orange
     playingMark.contentMode = .scaleAspectFit
     playingMark.isHidden = true
 
-    let text = UIStackView(arrangedSubviews: [nameLabel, descLabel, kickerLabel])
+    let text = UIStackView(arrangedSubviews: [nameLabel, kickerLabel, descLabel])
     text.axis = .vertical
-    text.spacing = 3
+    text.spacing = CassetteKitTokens.Component.StationRow.gap
     text.alignment = .leading
 
     playButton.addAction(UIAction { [weak self] _ in self?.onPlayTapped?() }, for: .touchUpInside)
-    NotificationCenter.default.addObserver(
-      self, selector: #selector(onNowChanged), name: RadioOnNow.didChange, object: nil
-    )
 
-    for v in [art, initials, text, playingMark, playButton] {
+    for v in [art, text, playingMark, playButton] {
       v.translatesAutoresizingMaskIntoConstraints = false
       contentView.addSubview(v)
     }
-    // The app's page gutter (Home, Search, the record pages), so a station row in Search lines up
-    // with its heading.
+    // The app's page gutter (Home, Search, the record pages), so a station row lines up with the
+    // headings and On now's cards above it.
     let m = CassetteHeading.sideInset
+    let padY = CassetteKitTokens.Component.StationRow.padY
     NSLayoutConstraint.activate([
       art.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: m),
-      art.topAnchor.constraint(equalTo: contentView.topAnchor, constant: CassetteTheme.Spacing.md),
-      art.bottomAnchor.constraint(
-        lessThanOrEqualTo: contentView.bottomAnchor,
-        constant: -CassetteTheme.Spacing.md
-      ),
+      art.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+      art.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: padY),
+      art.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -padY),
       art.widthAnchor.constraint(equalToConstant: Self.artSide),
       art.heightAnchor.constraint(equalToConstant: Self.artSide),
-      initials.centerXAnchor.constraint(equalTo: art.centerXAnchor),
-      initials.centerYAnchor.constraint(equalTo: art.centerYAnchor),
-      initials.widthAnchor.constraint(equalTo: art.widthAnchor),
 
       playButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -m),
-      playButton.centerYAnchor.constraint(equalTo: art.centerYAnchor),
+      playButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
       playButton.widthAnchor.constraint(equalToConstant: AlbumCollectionCell.playOverlayDiameter),
       playButton.heightAnchor.constraint(equalToConstant: AlbumCollectionCell.playOverlayDiameter),
       playingMark.centerXAnchor.constraint(equalTo: playButton.centerXAnchor),
@@ -776,19 +766,11 @@ final class RadioStationCell: UITableViewCell {
       playingMark.widthAnchor.constraint(equalToConstant: 18),
       playingMark.heightAnchor.constraint(equalToConstant: 18),
 
-      text.leadingAnchor.constraint(
-        equalTo: art.trailingAnchor,
-        constant: CassetteTheme.Spacing.md
-      ),
-      text.trailingAnchor.constraint(
-        equalTo: playButton.leadingAnchor,
-        constant: -CassetteTheme.Spacing.md
-      ),
-      text.topAnchor.constraint(equalTo: contentView.topAnchor, constant: CassetteTheme.Spacing.md),
-      text.bottomAnchor.constraint(
-        equalTo: contentView.bottomAnchor,
-        constant: -CassetteTheme.Spacing.md
-      ),
+      text.leadingAnchor.constraint(equalTo: art.trailingAnchor, constant: 14),
+      text.trailingAnchor.constraint(equalTo: playButton.leadingAnchor, constant: -CassetteTheme.Spacing.md),
+      text.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+      text.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: padY),
+      text.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -padY),
     ])
   }
 
@@ -805,16 +787,18 @@ final class RadioStationCell: UITableViewCell {
 
   func configure(row: RadioRow, playing: Bool) {
     nameLabel.text = row.displayName
-    slug = row.info?.slug
-    kicker = row.info?.kicker ?? row.radio.siteURL?.host ?? ""
-    showOnNow()
+    let kicker = row.info?.kicker ?? row.radio.siteURL?.host ?? ""
+    kickerLabel.text = kicker
+    kickerLabel.isHidden = kicker.isEmpty
+    let about = row.info?.description ?? ""
+    descLabel.attributedText = Self.described(about)
+    descLabel.isHidden = about.isEmpty
     playingMark.isHidden = !playing
     playButton.isHidden = playing
-    playButton.accessibilityLabel = "Play \(row.displayName)"
+    playButton.accessibilityLabel = "Tune in to \(row.displayName)"
     nameLabel.textColor = playing ? CassetteTheme.UIColors.orange : CassetteTheme.UIColors.ink
 
     // The word picture (the founder, 2026-10-21: never initials) until a sharp logo lands.
-    initials.isHidden = true
     art.backgroundColor = RadioTile.fill(accent: row.info?.accent)
     let color = row.info.flatMap { UIColor(cassetteHexString: $0.accent) } ?? CassetteTheme.UIColors.bg3
     art.image = CarPlayStyle.phoneWordArt(
@@ -841,48 +825,823 @@ final class RadioStationCell: UITableViewCell {
     }
   }
 
-  private static let artSide: CGFloat = 56
+  private static let artSide = CassetteKitTokens.Component.StationRow.logo
 
-  /// The second line says what's on; the third where the station is from.
-  private func showOnNow() {
-    let now = RadioOnNow.shared.line(for: slug)
-    descLabel.text = now
-    descLabel.isHidden = now == nil
-    kickerLabel.text = kicker
-    kickerLabel.isHidden = kicker.isEmpty
+  /// The station's own words at the kit's 13 on 1.35.
+  private static func described(_ text: String) -> NSAttributedString {
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineHeightMultiple = 1.12
+    paragraph.lineBreakMode = .byTruncatingTail
+    return NSAttributedString(string: text, attributes: [
+      .font: UIFont.systemFont(ofSize: 13),
+      .foregroundColor: CassetteTheme.UIColors.ink3,
+      .paragraphStyle: paragraph,
+    ])
+  }
+}
+
+// MARK: - RadioSectionLabelCell
+
+/// A section's name on the dial (RadioDial.module.css .sectionLabel): small capitals in the quietest
+/// ink, with the section's room above it.
+final class RadioSectionLabelCell: UITableViewCell {
+  static let reuseId = "RadioSectionLabelCell"
+
+  private let label = UILabel()
+
+  override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+    super.init(style: style, reuseIdentifier: reuseIdentifier)
+    backgroundColor = .clear
+    contentView.backgroundColor = .clear
+    selectionStyle = .none
+    label.numberOfLines = 1
+    label.accessibilityTraits = .header
+    label.translatesAutoresizingMaskIntoConstraints = false
+    contentView.addSubview(label)
+    NSLayoutConstraint.activate([
+      label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: CassetteHeading.sideInset),
+      label.trailingAnchor.constraint(
+        lessThanOrEqualTo: contentView.trailingAnchor,
+        constant: -CassetteHeading.sideInset
+      ),
+      label.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 26),
+      label.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -CassetteTheme.Spacing.xs),
+    ])
   }
 
-  @objc
-  private func onNowChanged() {
-    showOnNow()
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  func configure(title: String) {
+    label.attributedText = NSAttributedString(
+      string: title.uppercased(),
+      attributes: [
+        .kern: 1.4,
+        .font: UIFont.cassette(.sectionLabel),
+        .foregroundColor: CassetteTheme.UIColors.ink3,
+      ]
+    )
+  }
+}
+
+// MARK: - RadioDialChips
+
+/// The row of section chips under On now (RadioDial.module.css .dialRail): one per section of the
+/// dial, in the dial's order; a tap jumps to that section. The page keeps it under its top once the dial
+/// scrolls up to it, on the page's own colour so the rows pass under it unseen.
+final class RadioDialChips: UIView {
+  /// 30pt chips with 8 above and below.
+  static let height: CGFloat = 46
+
+  /// A chip was tapped: the section's place in the order given to `show`.
+  var onJump: ((Int) -> ())?
+
+  private let scroll = UIScrollView()
+  private let stack = UIStackView()
+  private var titles: [String] = []
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    backgroundColor = .backgroundColor
+    scroll.showsHorizontalScrollIndicator = false
+    scroll.alwaysBounceHorizontal = true
+    stack.axis = .horizontal
+    stack.spacing = 6
+    stack.alignment = .center
+    for v in [scroll, stack] { v.translatesAutoresizingMaskIntoConstraints = false }
+    addSubview(scroll)
+    scroll.addSubview(stack)
+    NSLayoutConstraint.activate([
+      scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
+      scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+      scroll.topAnchor.constraint(equalTo: topAnchor),
+      scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
+      stack.leadingAnchor.constraint(
+        equalTo: scroll.contentLayoutGuide.leadingAnchor,
+        constant: CassetteHeading.sideInset
+      ),
+      stack.trailingAnchor.constraint(
+        equalTo: scroll.contentLayoutGuide.trailingAnchor,
+        constant: -CassetteHeading.sideInset
+      ),
+      stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+      stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+      stack.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+    ])
   }
 
-  private static func initials(of name: String) -> String {
-    let parts = name.split(separator: " ").filter { !$0.isEmpty }
-    let first = parts.first?.prefix(1) ?? ""
-    let second = parts.dropFirst().first?.prefix(1) ?? ""
-    let s = (first + second).uppercased()
-    return s.isEmpty ? String(name.prefix(2)).uppercased() : s
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  func show(titles: [String]) {
+    guard titles != self.titles else { return }
+    self.titles = titles
+    for chip in stack.arrangedSubviews { chip.removeFromSuperview() }
+    for (index, title) in titles.enumerated() {
+      stack.addArrangedSubview(makeChip(title) { [weak self] in self?.onJump?(index) })
+    }
+  }
+
+  private func makeChip(_ title: String, tap: @escaping () -> ()) -> UIButton {
+    var config = UIButton.Configuration.filled()
+    config.cornerStyle = .capsule
+    config.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)
+    config.title = title
+    config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+      var out = incoming
+      out.font = UIFont.cassette(.miniTitle)
+      return out
+    }
+    config.baseBackgroundColor = .cassette(.surfaceRaised)
+    config.baseForegroundColor = .cassette(.textSecondary)
+    let button = UIButton(configuration: config, primaryAction: UIAction { _ in tap() })
+    // pressed, it lifts a step and its words come up to the full ink (the web's hover)
+    button.configurationUpdateHandler = { button in
+      guard var c = button.configuration else { return }
+      c.baseBackgroundColor = button.isHighlighted ? .cassette(.surfaceElevated) : .cassette(.surfaceRaised)
+      c.baseForegroundColor = button.isHighlighted ? .cassette(.textPrimary) : .cassette(.textSecondary)
+      button.configuration = c
+    }
+    button.translatesAutoresizingMaskIntoConstraints = false
+    button.heightAnchor.constraint(equalToConstant: 30).isActive = true
+    button.accessibilityHint = "Jumps to this part of the dial"
+    return button
+  }
+}
+
+// MARK: - RadioDailyTurn
+
+/// A station's place in today's order: the same all day, different the next. The web's own small steady
+/// hash (apps/cassette/src/lib/radio/daily-turn.ts) on the same day number, so On now leads with the same
+/// live stations on the phone as on the Mac and the website.
+enum RadioDailyTurn {
+  /// Whole days since 1970 in UTC, the web's `Math.floor(Date.now() / 86_400_000)`.
+  static func today(_ now: Date = Date()) -> Int {
+    Int((now.timeIntervalSince1970 / 86400).rounded(.down))
+  }
+
+  static func rank(day: Int, slug: String) -> UInt32 {
+    var h: UInt32 = 2_166_136_261
+    // the web reads each character's first UTF-16 unit (`charCodeAt(0)`)
+    for scalar in "\(day)|\(slug)".unicodeScalars {
+      h ^= UInt32(String(scalar).utf16.first ?? 0)
+      h = h &* 16_777_619
+    }
+    return h
+  }
+}
+
+// MARK: - RadioOnAir
+
+/// What's on a station as an On now card says it (components/radio/RadioDial OnAirCard): the song
+/// ("Artist · Title") or else the show, when the show ends, and the picture of what's playing (the
+/// record we carry, the station's cover for the song, the show's own picture).
+struct RadioOnAir: Equatable, Sendable {
+  let now: String?
+  let until: Date?
+  let cover: String?
+
+  private struct Payload: Decodable {
+    struct Show: Decodable {
+      let name: String?
+      let until: String?
+      let image: String?
+    }
+
+    struct Track: Decodable {
+      let artist: String?
+      let title: String?
+      let coverUrl: String?
+    }
+
+    struct Match: Decodable {
+      let coverUrl: String?
+    }
+
+    let show: Show?
+    let track: Track?
+    let match: Match?
+  }
+
+  private static var route: String {
+    #if DEBUG
+      // SIMCTL_CHILD_CASSETTE_RADIO_BASE=http://localhost:3200 xcrun simctl launch …
+      if let base = ProcessInfo.processInfo.environment["CASSETTE_RADIO_BASE"], !base.isEmpty {
+        return base + "/api/radio/now-playing?station="
+      }
+    #endif
+    return "https://www.cassette.digital/api/radio/now-playing?station="
+  }
+
+  /// One read of the station's now-playing route, the one the website's cards read (cached 15 seconds at
+  /// the edge). Nil when the station says nothing or can't be reached.
+  @MainActor
+  static func read(slug: String) async -> RadioOnAir? {
+    let escaped = slug.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? slug
+    guard let url = URL(string: route + escaped) else { return nil }
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 10
+    guard let (data, response) = try? await URLSession.shared.data(for: request),
+          (response as? HTTPURLResponse)?.statusCode == 200,
+          let payload = try? JSONDecoder().decode(Payload.self, from: data)
+    else { return nil }
+    // the pictures' ladder references, so the cover comes at the size of its square
+    CassetteImageLoader.shared.registerRefs(inJSON: data)
+    func filled(_ s: String?) -> String? {
+      guard let s = s?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+      return s
+    }
+    let song = [filled(payload.track?.artist), filled(payload.track?.title)].compactMap { $0 }
+    let now = song.isEmpty ? filled(payload.show?.name) : song.joined(separator: " · ")
+    let cover = [payload.match?.coverUrl, payload.track?.coverUrl, payload.show?.image].lazy
+      .compactMap { filled($0) }.first
+    let until = filled(payload.show?.until).flatMap { stamp -> Date? in
+      let precise = ISO8601DateFormatter()
+      precise.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      return precise.date(from: stamp) ?? ISO8601DateFormatter().date(from: stamp)
+    }
+    if now == nil, cover == nil, until == nil { return nil }
+    return RadioOnAir(now: now, until: until, cover: cover)
+  }
+}
+
+// MARK: - RadioOnAirCard
+
+/// One card in On now (RadioDial.module.css .onAir). The station's mark fills the card's picture square
+/// as a cover does, square inside the card, whose own corners round it, until what the station is
+/// playing has a cover that has fully arrived; then the cover rises slowly from a touch large while the
+/// mark glides down into the corner, small and rounded like an app icon, ringed in the card's colour, a
+/// beat behind it (the founder, 2026-11-07: "a nice, gentle transition in"; 2026-11-16: the mark takes
+/// the card's corners). Beside it the station's name, what's on in the italic, and a meta line ("until
+/// 3:00 PM"), then the play disc. A tap opens the station's page; only the disc tunes in, or stops the
+/// station that's on. A long press is the station's menu.
+final class RadioOnAirCard: UIControl {
+  static let side: CGFloat = 112
+  private static let badge: CGFloat = 36
+  private static let ringWidth: CGFloat = 2
+  private static let disc: CGFloat = 40
+
+  let station: RadioCatalogStation
+  var onOpen: (() -> ())?
+  var onDisc: (() -> ())?
+  var menu: (() -> UIMenu?)?
+
+  private let art = UIView()
+  private let cover = UIImageView()
+  private let ring = UIView()
+  private let mark = UIImageView()
+  private let nameLabel = UILabel()
+  private let nowLabel = UILabel()
+  private let metaLabel = UILabel()
+  private let discButton = AlbumCollectionCell.makePlayOverlayButton()
+  private var markTask: Task<(), Never>?
+  private var shownNow = ""
+  private(set) var isWorn = false
+  private var isOn = false
+
+  init(station: RadioCatalogStation) {
+    self.station = station
+    super.init(frame: .zero)
+    layer.cornerRadius = CassetteRadius.card
+    layer.cornerCurve = .continuous
+    clipsToBounds = true
+    backgroundColor = .cassette(.surfaceRaised)
+    isContextMenuInteractionEnabled = true
+    addAction(UIAction { [weak self] _ in self?.onOpen?() }, for: .touchUpInside)
+    // VoiceOver reads the card as one: its station, what's on and the meta line; activating it opens the
+    // station, and its disc is the card's own action (setOn names it)
+    isAccessibilityElement = true
+    accessibilityTraits = .button
+
+    art.clipsToBounds = true
+    art.isUserInteractionEnabled = false
+    cover.contentMode = .scaleAspectFill
+    cover.clipsToBounds = true
+    cover.alpha = 0
+    ring.clipsToBounds = false
+    ring.layer.cornerCurve = .continuous
+    ring.layer.shadowColor = UIColor.black.cgColor
+    ring.layer.shadowOpacity = 0
+    ring.layer.shadowRadius = 5
+    ring.layer.shadowOffset = CGSize(width: 0, height: 4)
+    mark.contentMode = .scaleAspectFill
+    mark.clipsToBounds = true
+    mark.layer.cornerCurve = .continuous
+    art.addSubview(cover)
+    art.addSubview(ring)
+    ring.addSubview(mark)
+    cover.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
+    placeMark(badge: false)
+
+    nameLabel.font = UIFont.cassette(.rowTitle)
+    nameLabel.textColor = .cassette(.textPrimary)
+    nameLabel.text = station.name
+    nowLabel.font = UIFont.cassetteAnswer(size: 17)
+    nowLabel.textColor = .cassette(.textPrimary)
+    nowLabel.numberOfLines = 2
+    metaLabel.font = UIFont.cassette(.caption)
+    metaLabel.textColor = .cassette(.textSecondary)
+    let words = UIStackView(arrangedSubviews: [nameLabel, nowLabel, metaLabel])
+    words.axis = .vertical
+    words.spacing = 5
+    words.alignment = .fill
+    words.isUserInteractionEnabled = false
+
+    if var c = discButton.configuration {
+      c.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 17, weight: .bold)
+      discButton.configuration = c
+    }
+    discButton.addAction(UIAction { [weak self] _ in self?.onDisc?() }, for: .touchUpInside)
+
+    for v in [art, words, discButton] {
+      v.translatesAutoresizingMaskIntoConstraints = false
+      addSubview(v)
+    }
+    NSLayoutConstraint.activate([
+      heightAnchor.constraint(equalToConstant: Self.side),
+      art.leadingAnchor.constraint(equalTo: leadingAnchor),
+      art.topAnchor.constraint(equalTo: topAnchor),
+      art.widthAnchor.constraint(equalToConstant: Self.side),
+      art.heightAnchor.constraint(equalToConstant: Self.side),
+      discButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+      discButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+      discButton.widthAnchor.constraint(equalToConstant: Self.disc),
+      discButton.heightAnchor.constraint(equalToConstant: Self.disc),
+      words.leadingAnchor.constraint(equalTo: art.trailingAnchor, constant: 16),
+      words.trailingAnchor.constraint(equalTo: discButton.leadingAnchor, constant: -16),
+      words.centerYAnchor.constraint(equalTo: centerYAnchor),
+      words.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 8),
+      words.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -8),
+    ])
+
+    cassetteOnAppearanceChange { view in
+      guard let card = view as? RadioOnAirCard else { return }
+      card.layer.borderColor = UIColor.cassette(.accentProgress).cgColor
+      card.ring.backgroundColor = card.isWorn ? .cassette(.surfaceRaised) : .clear
+    }
+    showWords(now: station.description, meta: Self.network(of: station), animated: false)
+    setOn(false)
+    loadMark()
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  /// "KUSC 91.5", or nothing when the network is the station's own name (KEXP).
+  static func network(of station: RadioCatalogStation) -> String {
+    station.sourceLabel.caseInsensitiveCompare(station.name) == .orderedSame ? "" : station.sourceLabel
+  }
+
+  override var isHighlighted: Bool {
+    didSet {
+      backgroundColor = isHighlighted ? .cassette(.surfaceElevated) : .cassette(.surfaceRaised)
+    }
+  }
+
+  override func contextMenuInteraction(
+    _ interaction: UIContextMenuInteraction,
+    configurationForMenuAtLocation location: CGPoint
+  )
+    -> UIContextMenuConfiguration? {
+    guard let menu = menu?() else { return nil }
+    return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in menu }
+  }
+
+  // MARK: What it says
+
+  /// The words beside the picture. New words on what's playing fade up into place (the web's
+  /// onAirFresh); the station's own description is there from the start.
+  func showWords(now: String, meta: String, animated: Bool) {
+    metaLabel.text = meta
+    metaLabel.isHidden = meta.isEmpty
+    guard now != shownNow else { return }
+    shownNow = now
+    nowLabel.text = now
+    accessibilityLabel = [station.name, now, meta].filter { !$0.isEmpty }.joined(separator: ", ")
+    guard animated, !UIAccessibility.isReduceMotionEnabled else { return }
+    nowLabel.alpha = 0
+    nowLabel.transform = CGAffineTransform(translationX: 0, y: 3)
+    UIView.animate(withDuration: 0.7, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
+      self.nowLabel.alpha = 1
+      self.nowLabel.transform = .identity
+    }
+  }
+
+  /// This station is the one playing: ringed in the live orange, its disc a stop.
+  func setOn(_ on: Bool) {
+    isOn = on
+    layer.borderWidth = on ? 1.5 : 0
+    if var c = discButton.configuration {
+      c.image = (on ? CassetteIcon.stop : CassetteIcon.play).symbolImage
+      // the play glyph sits 2pt right of centre to look centred; the square stop doesn't
+      c.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: on ? 0 : 2, bottom: 0, trailing: 0)
+      discButton.configuration = c
+    }
+    discButton.accessibilityLabel = on ? "Stop \(station.name)" : "Tune in to \(station.name)"
+    accessibilityCustomActions = [
+      UIAccessibilityCustomAction(name: on ? "Stop" : "Tune in") { [weak self] _ in
+        self?.onDisc?()
+        return true
+      },
+    ]
+  }
+
+  // MARK: The picture
+
+  /// The cover arrived: it rises under the mark, and the mark glides down into the corner.
+  func wear(_ image: UIImage, animated: Bool) {
+    guard !isWorn else {
+      // a new song while it's already worn: the cover crossfades
+      guard cover.image !== image else { return }
+      UIView.transition(with: cover, duration: animated ? 0.4 : 0, options: .transitionCrossDissolve) {
+        self.cover.image = image
+      }
+      return
+    }
+    isWorn = true
+    cover.image = image
+    guard animated, !UIAccessibility.isReduceMotionEnabled else {
+      cover.alpha = 1
+      cover.transform = .identity
+      placeMark(badge: true)
+      ring.layer.shadowOpacity = 0.28
+      return
+    }
+    cover.alpha = 0
+    cover.transform = CGAffineTransform(scaleX: 1.06, y: 1.06)
+    UIView.animate(withDuration: 0.8, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
+      self.cover.alpha = 1
+    }
+    let rise = UIViewPropertyAnimator(
+      duration: 1.4,
+      controlPoint1: CGPoint(x: 0.2, y: 0.8),
+      controlPoint2: CGPoint(x: 0.2, y: 1)
+    ) { self.cover.transform = .identity }
+    rise.isUserInteractionEnabled = true
+    rise.startAnimation()
+    let glide = UIViewPropertyAnimator(
+      duration: 0.9,
+      controlPoint1: CGPoint(x: 0.65, y: 0),
+      controlPoint2: CGPoint(x: 0.35, y: 1)
+    ) { self.placeMark(badge: true, ringed: false) }
+    glide.isUserInteractionEnabled = true
+    glide.startAnimation(afterDelay: 0.2)
+    // its ring and shadow come last
+    UIView.animate(withDuration: 0.5, delay: 0.7, options: [.curveEaseInOut, .allowUserInteraction]) {
+      self.ring.backgroundColor = .cassette(.surfaceRaised)
+    }
+    let shadow = CABasicAnimation(keyPath: "shadowOpacity")
+    shadow.fromValue = 0
+    shadow.toValue = 0.28
+    shadow.beginTime = CACurrentMediaTime() + 0.7
+    shadow.duration = 0.5
+    shadow.fillMode = .backwards
+    ring.layer.add(shadow, forKey: "settle")
+    ring.layer.shadowOpacity = 0.28
+  }
+
+  /// What's playing has no picture any more: the mark takes the square back.
+  func unwear(animated: Bool) {
+    guard isWorn else { return }
+    isWorn = false
+    let back = {
+      self.cover.alpha = 0
+      self.placeMark(badge: false)
+    }
+    ring.layer.shadowOpacity = 0
+    if animated, !UIAccessibility.isReduceMotionEnabled {
+      UIView.animate(withDuration: 0.6, delay: 0, options: [.curveEaseInOut, .allowUserInteraction], animations: back)
+    } else {
+      back()
+    }
+  }
+
+  /// The mark whole (the picture square, square in the card's corner) or as a badge on the cover's
+  /// corner (36pt, 8 in from the left and 8 up from the bottom, ringed 2pt in the card's colour).
+  private func placeMark(badge: Bool, ringed: Bool = true) {
+    if badge {
+      let r = Self.ringWidth
+      let markRadius = CassetteRadius.station(side: Self.badge)
+      ring.frame = CGRect(x: 8 - r, y: Self.side - 8 - Self.badge - r, width: Self.badge + 2 * r, height: Self.badge + 2 * r)
+      mark.frame = CGRect(x: r, y: r, width: Self.badge, height: Self.badge)
+      mark.layer.cornerRadius = markRadius
+      ring.layer.cornerRadius = markRadius + r
+      if ringed { ring.backgroundColor = .cassette(.surfaceRaised) }
+    } else {
+      ring.frame = CGRect(x: 0, y: 0, width: Self.side, height: Self.side)
+      mark.frame = ring.bounds
+      mark.layer.cornerRadius = 0
+      ring.layer.cornerRadius = 0
+      ring.backgroundColor = .clear
+    }
+  }
+
+  /// The station's word picture in its own colour, then its logo once a sharp one has arrived.
+  private func loadMark() {
+    let color = UIColor(cassetteHexString: station.accent) ?? CassetteTheme.UIColors.bg3
+    mark.backgroundColor = RadioTile.fill(accent: station.accent)
+    mark.image = CarPlayStyle.phoneWordArt(word: station.name, color: color, side: Self.side, scale: 3)
+    guard let src = station.image, !src.isEmpty else { return }
+    let pixels = CassetteImageLoader.markPixel(side: Self.side)
+    if let cached = CassetteImageLoader.shared.cachedImage(for: src, maxPixel: pixels) {
+      if CassetteImageLoader.isSharp(cached) { mark.image = cached }
+      return
+    }
+    markTask = Task { @MainActor [weak self] in
+      let loaded = await CassetteImageLoader.shared.image(for: src, maxPixel: pixels)
+      guard let self, let loaded, CassetteImageLoader.isSharp(loaded) else { return }
+      UIView.transition(with: mark, duration: 0.2, options: .transitionCrossDissolve) {
+        self.mark.image = loaded
+      }
+    }
+  }
+}
+
+// MARK: - RadioOnNowBoard
+
+/// On now, the top of the Radio page (apps/cassette/src/app/components/radio/RadioDial.tsx): the
+/// person's saved stations, then the live stations that publish what's on, in a different order each day
+/// so the same few don't lead for weeks (the founder, 2026-11-07), six at most. Each card asks what's on
+/// once when it shows, and the cards fill in one after another in reading order (the founder, 2026-11-07:
+/// "load sequentially"): a card settles once what it's playing is known and its cover has fully arrived,
+/// and only after the card before it has. A card slow to answer gets a short wait, then the next goes
+/// ahead and the slow one settles whenever it's ready (2026-11-16).
+final class RadioOnNowBoard: UIView {
+  /// The beat between one card settling and the next.
+  private static let beatWait = Duration.milliseconds(160)
+  /// How long a card's turn waits for it before the next card goes ahead anyway.
+  private static let turnWait = Duration.milliseconds(450)
+  /// How long a cover gets to arrive before its card settles without it (the cover still takes its
+  /// place when it lands).
+  private static let coverWait = Duration.milliseconds(1500)
+
+  var onOpen: ((RadioCatalogStation) -> ())?
+  var onDisc: ((RadioCatalogStation) -> ())?
+  var menuFor: ((RadioCatalogStation) -> UIMenu?)?
+  /// Cards came or went: the page sizes the board again.
+  var onResize: (() -> ())?
+
+  /// The cards' stations' slugs, in reading order.
+  private(set) var order: [String] = []
+  /// When the cards last asked what's on.
+  private(set) var lastRead: Date?
+
+  private let heading = CassetteHeading.makeLabel()
+  private let stack = UIStackView()
+  private var stations: [String: RadioCatalogStation] = [:]
+  private var cards: [String: RadioOnAirCard] = [:]
+  private var states: [String: CardState] = [:]
+  private var reads: [String: Task<(), Never>] = [:]
+  private var coverWaits: [String: Task<(), Never>] = [:]
+  private var turnAt = 0
+  private var beat: Task<(), Never>?
+  private var wait: Task<(), Never>?
+
+  private struct CardState {
+    /// What's on is known (or the station publishes nothing).
+    var answered = false
+    var answer: RadioOnAir?
+    var coverImage: UIImage?
+    /// The cover arrived, failed, or ran out of time.
+    var coverSettled = false
+    /// The card has settled once: its words are what's on.
+    var shown = false
+  }
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    heading.attributedText = CassetteHeading.attributed(
+      shout: "On now",
+      answer: nil,
+      answerColor: .cassette(.textSecondary)
+    )
+    heading.accessibilityLabel = "On now"
+    stack.axis = .vertical
+    stack.spacing = 12
+    stack.translatesAutoresizingMaskIntoConstraints = false
+    addSubview(heading)
+    addSubview(stack)
+    let m = CassetteHeading.sideInset
+    NSLayoutConstraint.activate([
+      heading.topAnchor.constraint(equalTo: topAnchor, constant: CassetteTheme.Spacing.sm),
+      heading.leadingAnchor.constraint(equalTo: leadingAnchor, constant: m),
+      heading.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -m),
+      stack.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: CassetteHeading.bottomSpacing),
+      stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: m),
+      stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -m),
+      // the section chips come 26 below the last card (the web's .dialRail margin)
+      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -26),
+    ])
+  }
+
+  @available(*, unavailable)
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  /// The board's stations, in reading order. The same list again changes nothing; a new one keeps the
+  /// cards it already had (and what they know) and turns the new ones in after them.
+  func show(stations next: [RadioCatalogStation]) {
+    let slugs = next.map(\.slug)
+    guard slugs != order else { return }
+    order = slugs
+    stations = Dictionary(next.map { ($0.slug, $0) }, uniquingKeysWith: { a, _ in a })
+    var kept: [String: RadioOnAirCard] = [:]
+    for station in next { kept[station.slug] = cards[station.slug] ?? makeCard(station) }
+    for (slug, task) in reads where kept[slug] == nil { task.cancel() }
+    for (slug, task) in coverWaits where kept[slug] == nil { task.cancel() }
+    reads = reads.filter { kept[$0.key] != nil }
+    coverWaits = coverWaits.filter { kept[$0.key] != nil }
+    states = states.filter { kept[$0.key] != nil }
+    cards = kept
+    for view in stack.arrangedSubviews { view.removeFromSuperview() }
+    for slug in slugs { if let card = kept[slug] { stack.addArrangedSubview(card) } }
+    for station in next where states[station.slug] == nil {
+      states[station.slug] = CardState()
+      ask(station)
+    }
+    turnAt = order.firstIndex { !(states[$0]?.shown ?? false) } ?? order.count
+    startTurn()
+    update()
+    onResize?()
+  }
+
+  /// Ask every card what's on again (pull to refresh, or the page back after a while).
+  func reread() {
+    for slug in order { if let station = stations[slug] { ask(station) } }
+  }
+
+  /// The station playing now, by slug, rings its card and turns its disc into a stop.
+  func setOn(slug: String?) {
+    for (key, card) in cards { card.setOn(key == slug) }
+  }
+
+  private func makeCard(_ station: RadioCatalogStation) -> RadioOnAirCard {
+    let card = RadioOnAirCard(station: station)
+    card.onOpen = { [weak self] in self?.onOpen?(station) }
+    card.onDisc = { [weak self] in self?.onDisc?(station) }
+    card.menu = { [weak self] in self?.menuFor?(station) }
+    return card
+  }
+
+  // MARK: Reading what's on
+
+  private func ask(_ station: RadioCatalogStation) {
+    let slug = station.slug
+    guard station.hasNowPlaying else {
+      states[slug]?.answered = true
+      update()
+      return
+    }
+    lastRead = Date()
+    reads[slug]?.cancel()
+    reads[slug] = Task { @MainActor [weak self] in
+      let answer = await RadioOnAir.read(slug: slug)
+      guard let self, !Task.isCancelled else { return }
+      reads[slug] = nil
+      answered(slug, answer)
+    }
+  }
+
+  /// What the station's playing has a picture of its own, other than the station's own mark.
+  private func wear(_ answer: RadioOnAir?, _ slug: String) -> String? {
+    guard let cover = answer?.cover, cover != stations[slug]?.image else { return nil }
+    return cover
+  }
+
+  private func answered(_ slug: String, _ answer: RadioOnAir?) {
+    guard var state = states[slug] else { return }
+    let before = wear(state.answer, slug)
+    state.answered = true
+    state.answer = answer
+    let after = wear(answer, slug)
+    if after != before {
+      state.coverImage = nil
+      state.coverSettled = after == nil
+    }
+    states[slug] = state
+    if let after, after != before { loadCover(after, slug) }
+    update()
+  }
+
+  private func loadCover(_ src: String, _ slug: String) {
+    coverWaits[slug]?.cancel()
+    coverWaits[slug] = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: Self.coverWait)
+      guard let self, !Task.isCancelled, states[slug]?.coverImage == nil else { return }
+      states[slug]?.coverSettled = true
+      update()
+    }
+    Task { @MainActor [weak self] in
+      let image = await CassetteImageLoader.shared.image(for: src, side: RadioOnAirCard.side)
+      // still the picture this card is waiting for?
+      guard let self, states[slug] != nil, wear(states[slug]?.answer, slug) == src else { return }
+      if let image { states[slug]?.coverImage = image }
+      states[slug]?.coverSettled = true
+      update()
+    }
+  }
+
+  // MARK: Turns
+
+  private func isReady(_ slug: String) -> Bool {
+    guard let state = states[slug], state.answered else { return false }
+    return wear(state.answer, slug) == nil || state.coverImage != nil || state.coverSettled
+  }
+
+  /// A turn begins: the longest it waits for its card, from now (not from when the last card got ready).
+  private func startTurn() {
+    beat?.cancel()
+    beat = nil
+    wait?.cancel()
+    wait = nil
+    guard turnAt < order.count else { return }
+    let at = turnAt
+    wait = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: Self.turnWait)
+      guard !Task.isCancelled else { return }
+      self?.advance(from: at)
+    }
+  }
+
+  private func advance(from at: Int) {
+    guard turnAt == at else { return }
+    turnAt = at + 1
+    startTurn()
+    update()
+  }
+
+  /// Every card shows what it knows once its turn has come (or gone by) and it's ready; the card whose
+  /// turn it is goes a beat after it's ready.
+  private func update() {
+    for (index, slug) in order.enumerated() {
+      guard index <= turnAt, isReady(slug), var state = states[slug],
+            let card = cards[slug], let station = stations[slug] else { continue }
+      let fresh = !state.shown
+      state.shown = true
+      states[slug] = state
+      card.showWords(
+        now: state.answer?.now ?? station.description,
+        meta: meta(station, state.answer),
+        animated: true
+      )
+      if let image = state.coverImage {
+        card.wear(image, animated: true)
+      } else if card.isWorn, wear(state.answer, slug) == nil {
+        card.unwear(animated: !fresh)
+      }
+    }
+    if beat == nil, turnAt < order.count, isReady(order[turnAt]) {
+      let at = turnAt
+      beat = Task { @MainActor [weak self] in
+        try? await Task.sleep(for: Self.beatWait)
+        guard !Task.isCancelled else { return }
+        self?.advance(from: at)
+      }
+    }
+  }
+
+  /// "KUSC 91.5 · until 3:00 PM": the network when it isn't the station's own name, and when the show
+  /// ends while that's still ahead.
+  private func meta(_ station: RadioCatalogStation, _ answer: RadioOnAir?) -> String {
+    var parts = [RadioOnAirCard.network(of: station)].filter { !$0.isEmpty }
+    if let until = answer?.until, until > Date() {
+      let clock = DateFormatter()
+      clock.setLocalizedDateFormatFromTemplate("jmm")
+      parts.append("until \(clock.string(from: until))")
+    }
+    return parts.joined(separator: " · ")
   }
 }
 
 // MARK: - RadiosVC
 
+/// The Radio page, the one the Mac app and the website draw (apps/cassette/src/app/components/radio/
+/// RadioDial.tsx; the founder, 2026-11-16: "build the Radio page across surfaces"): On now first, then
+/// the section chips, then every station on the dial in its section. Saved stations lead On now and their
+/// own sections. A tap on a station opens its page; only a play disc tunes in.
 class RadiosVC: UITableViewController, UISearchResultsUpdating {
   override var sceneTitle: String? { "Radio" }
-  static let savedSectionTitle = "Your stations"
+
+  /// One line of the dial: a section's name, or a station.
+  private enum DialItem {
+    case label(String)
+    case station(RadioRow)
+  }
 
   private let account: Account
   private var radios: [Radio] = []
-  private var sections: [(title: String, rows: [RadioRow])] = []
+  private var items: [DialItem] = []
+  /// Where each section's name sits in `items`, in the chips' order.
+  private var sectionStarts: [Int] = []
   private var query = ""
   private var playingTimer: Timer?
   private var lastPlayingKey = ""
   private let searchController = UISearchController(searchResultsController: nil)
+  private let board = RadioOnNowBoard()
+  private let chips = RadioDialChips()
+  private var boardWidth: CGFloat = 0
 
   init(account: Account) {
     self.account = account
-    super.init(style: .grouped)
+    // plain, so the section chips stay under the top of the page once the dial scrolls up to them
+    super.init(style: .plain)
   }
 
   required init?(coder: NSCoder) {
@@ -897,13 +1656,20 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
     setNavBarTitle(title: sceneTitle ?? "")
 
     tableView.register(RadioStationCell.self, forCellReuseIdentifier: RadioStationCell.reuseId)
+    tableView.register(RadioSectionLabelCell.self, forCellReuseIdentifier: RadioSectionLabelCell.reuseId)
     tableView.rowHeight = UITableView.automaticDimension
     tableView.estimatedRowHeight = 92
     tableView.separatorStyle = .none
     tableView.backgroundColor = .backgroundColor
-    tableView.sectionHeaderTopPadding = CassetteTheme.Spacing.sm
+    tableView.sectionHeaderTopPadding = 0
     tableView.sectionFooterHeight = 0
     tableView.estimatedSectionFooterHeight = 0
+
+    board.onOpen = { [weak self] station in self?.open(station) }
+    board.onDisc = { [weak self] station in self?.tuneInOrStop(station) }
+    board.menuFor = { [weak self] station in self?.menu(for: station) }
+    board.onResize = { [weak self] in self?.sizeBoard(force: true) }
+    chips.onJump = { [weak self] index in self?.jump(toSection: index) }
 
     #if !targetEnvironment(macCatalyst)
       refreshControl = UIRefreshControl()
@@ -944,24 +1710,20 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
     super.viewIsAppearing(animated)
     extendSafeAreaToAccountForMiniPlayer()
     updateFromRemote()
-    if !watchingOnNow {
-      watchingOnNow = true
-      RadioOnNow.shared.begin()
-    }
+    // back on the page after a while: the cards ask what's on again
+    if let last = board.lastRead, Date().timeIntervalSince(last) > 60 { board.reread() }
   }
 
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     playingTimer?.invalidate()
     playingTimer = nil
-    if watchingOnNow {
-      watchingOnNow = false
-      RadioOnNow.shared.end()
-    }
   }
 
-  /// Reading what's on (RadioOnNow) while the list is up.
-  private var watchingOnNow = false
+  override func viewDidLayoutSubviews() {
+    super.viewDidLayoutSubviews()
+    sizeBoard()
+  }
 
   // MARK: Data
 
@@ -970,6 +1732,10 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
     rebuildRows()
   }
 
+  /// The dial as the Mac's Radio page lays it out (apps/cassette/src/lib/radio/dial.ts): the saved
+  /// stations first, newest saved first, then by section in the catalog's order, each section keeping
+  /// the registry's own order; a section comes in where its first station does, so the sections holding
+  /// saved stations lead.
   private func rebuildRows() {
     let catalog = RadioCatalog.shared
     var rows = radios.map { RadioRow(radio: $0, info: catalog.station(forStreamUrl: $0.url)) }
@@ -979,43 +1745,85 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
         (row.info?.searchText ?? row.displayName.lowercased()).contains(q)
       }
     }
-    var grouped: [String: [RadioRow]] = [:]
-    for row in rows { grouped[row.section, default: []].append(row) }
-    // cassette 2026-10-21: the stations this person saved lead the dial, latest save
-    // first, and stay in their own sections below too.
-    let rowsByURL = Dictionary(
-      rows.map { (RadioCatalog.normalize($0.radio.url), $0) },
-      uniquingKeysWith: { a, _ in a }
-    )
-    let savedRows = RadioSaved.shared.slugs.compactMap { slug in
-      catalog.station(slug: slug).flatMap { rowsByURL[RadioCatalog.normalize($0.streamUrl)] }
-    }
+    let saved = RadioSaved.shared.slugs
+    let savedRank = Dictionary(saved.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
     let order = catalog.sectionOrder
-    func rank(_ title: String) -> (Int, String) {
-      if title == "Other stations" { return (order.count + 1, title) }
-      if let i = order.firstIndex(of: title) { return (i, title) }
-      return (order.count, title)
+    func sectionRank(_ title: String) -> Int {
+      if title == "Other stations" { return order.count + 1 }
+      return order.firstIndex(of: title) ?? order.count
     }
-    sections = grouped.keys
-      .sorted { rank($0) < rank($1) }
-      .map { title in
-        (
-          title,
-          grouped[title]!
-            .sorted {
-              $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-            }
-        )
-      }
-    if !savedRows.isEmpty {
-      sections.insert((Self.savedSectionTitle, savedRows), at: 0)
+    let ranked = rows.enumerated().map { place, row in
+      (savedAt: row.info.flatMap { savedRank[$0.slug] } ?? Int.max, section: sectionRank(row.section), place: place, row: row)
     }
+    .sorted { a, b in
+      if a.savedAt != b.savedAt { return a.savedAt < b.savedAt }
+      if a.section != b.section { return a.section < b.section }
+      return a.place < b.place
+    }
+    var titles: [String] = []
+    var grouped: [String: [RadioRow]] = [:]
+    for entry in ranked {
+      if grouped[entry.row.section] == nil { titles.append(entry.row.section) }
+      grouped[entry.row.section, default: []].append(entry.row)
+    }
+    items = []
+    sectionStarts = []
+    for title in titles {
+      sectionStarts.append(items.count)
+      items.append(.label(title))
+      items.append(contentsOf: (grouped[title] ?? []).map { .station($0) })
+    }
+    chips.show(titles: titles)
+    board.show(stations: onNowStations())
+    board.setOn(slug: playingSlug)
     tableView.reloadData()
+    sizeBoard(force: true)
     updateContentUnavailable()
   }
 
+  /// On now's stations: the saved ones, newest saved first, then the live stations that publish what's
+  /// on and have a mark of their own, in today's turn; six at most.
+  private func onNowStations() -> [RadioCatalogStation] {
+    let catalog = RadioCatalog.shared
+    let saved = RadioSaved.shared.slugs
+    let mine = saved.compactMap { catalog.station(slug: $0) }
+    let day = RadioDailyTurn.today()
+    let live = catalog.stations
+      .filter { !saved.contains($0.slug) && $0.hasNowPlaying && $0.isLive && !($0.image ?? "").isEmpty }
+      .map { (turn: RadioDailyTurn.rank(day: day, slug: $0.slug), station: $0) }
+      .sorted { $0.turn < $1.turn }
+      .map(\.station)
+    return Array((mine + live).prefix(6))
+  }
+
+  /// On now leads the page except while searching.
+  private var showsBoard: Bool { query.isEmpty && !board.order.isEmpty }
+
+  /// The chips show over a dial of more than one section, except while searching.
+  private var showsChips: Bool { query.isEmpty && sectionStarts.count > 1 }
+
+  /// On now sits above the dial as the table's header, as tall as its cards.
+  private func sizeBoard(force: Bool = false) {
+    let width = tableView.bounds.width
+    guard width > 0 else { return }
+    guard showsBoard else {
+      if tableView.tableHeaderView != nil { tableView.tableHeaderView = nil }
+      return
+    }
+    guard force || width != boardWidth || tableView.tableHeaderView !== board else { return }
+    boardWidth = width
+    board.frame = CGRect(x: 0, y: 0, width: width, height: 0)
+    let height = board.systemLayoutSizeFitting(
+      CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
+      withHorizontalFittingPriority: .required,
+      verticalFittingPriority: .fittingSizeLevel
+    ).height
+    board.frame = CGRect(x: 0, y: 0, width: width, height: height)
+    tableView.tableHeaderView = board
+  }
+
   private func updateContentUnavailable() {
-    if sections.isEmpty {
+    if items.isEmpty {
       contentUnavailableConfiguration = query.isEmpty
         ? emptyContentConfig : UIContentUnavailableConfiguration.cassetteNoResults(body: nil)
     } else {
@@ -1045,6 +1853,7 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
 
   @objc
   private func handleRefresh(refreshControl: UIRefreshControl) {
+    board.reread()
     guard appDelegate.storage.settings.user.isOnlineMode else {
       refreshControl.endRefreshing()
       return
@@ -1073,6 +1882,13 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
     return current.id
   }
 
+  /// The registry station playing now, for On now's ring.
+  private var playingSlug: String? {
+    guard appDelegate.player.isPlaying,
+          let current = appDelegate.player.currentlyPlaying as? Radio else { return nil }
+    return RadioCatalog.shared.station(forStreamUrl: current.url)?.slug
+  }
+
   private func isPlaying(_ row: RadioRow) -> Bool {
     let key = playingKey
     return !key.isEmpty && row.radio.id == key
@@ -1081,12 +1897,14 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
   private func startPlayingWatch() {
     playingTimer?.invalidate()
     lastPlayingKey = playingKey
+    board.setOn(slug: playingSlug)
     playingTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated {
         guard let self else { return }
         let key = self.playingKey
         guard key != self.lastPlayingKey else { return }
         self.lastPlayingKey = key
+        self.board.setOn(slug: self.playingSlug)
         self.tableView.reloadData()
       }
     }
@@ -1103,10 +1921,10 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
 
   // MARK: Table
 
-  override func numberOfSections(in tableView: UITableView) -> Int { sections.count }
+  override func numberOfSections(in tableView: UITableView) -> Int { 1 }
 
   override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-    sections[section].rows.count
+    items.count
   }
 
   override func tableView(
@@ -1114,34 +1932,11 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
     viewForHeaderInSection section: Int
   )
     -> UIView? {
-    let container = UIView()
-    let label = UILabel()
-    label.attributedText = NSAttributedString(
-      string: sections[section].title.uppercased(),
-      attributes: [
-        .kern: 1.4,
-        .font: UIFont.cassette(.sectionLabel),
-        .foregroundColor: CassetteTheme.UIColors.ink3,
-      ]
-    )
-    label.translatesAutoresizingMaskIntoConstraints = false
-    container.addSubview(label)
-    NSLayoutConstraint.activate([
-      label.leadingAnchor.constraint(
-        equalTo: container.leadingAnchor,
-        constant: CassetteHeading.sideInset
-      ),
-      label.trailingAnchor.constraint(
-        lessThanOrEqualTo: container.trailingAnchor,
-        constant: -CassetteHeading.sideInset
-      ),
-      label.topAnchor.constraint(equalTo: container.topAnchor, constant: CassetteTheme.Spacing.md),
-      label.bottomAnchor.constraint(
-        equalTo: container.bottomAnchor,
-        constant: -CassetteTheme.Spacing.xs
-      ),
-    ])
-    return container
+    showsChips ? chips : nil
+  }
+
+  override func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+    showsChips ? RadioDialChips.height : 0
   }
 
   override func tableView(
@@ -1149,14 +1944,28 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
     cellForRowAt indexPath: IndexPath
   )
     -> UITableViewCell {
-    let cell = tableView.dequeueReusableCell(
-      withIdentifier: RadioStationCell.reuseId,
-      for: indexPath
-    ) as! RadioStationCell
-    let row = sections[indexPath.section].rows[indexPath.row]
-    cell.configure(row: row, playing: isPlaying(row))
-    cell.onPlayTapped = { [weak self] in self?.play(row.radio) }
-    return cell
+    switch items[indexPath.row] {
+    case let .label(title):
+      let cell = tableView.dequeueReusableCell(
+        withIdentifier: RadioSectionLabelCell.reuseId,
+        for: indexPath
+      ) as! RadioSectionLabelCell
+      cell.configure(title: title)
+      return cell
+    case let .station(row):
+      let cell = tableView.dequeueReusableCell(
+        withIdentifier: RadioStationCell.reuseId,
+        for: indexPath
+      ) as! RadioStationCell
+      cell.configure(row: row, playing: isPlaying(row))
+      cell.onPlayTapped = { [weak self] in self?.play(row.radio) }
+      return cell
+    }
+  }
+
+  override func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
+    if case .station = items[indexPath.row] { return true }
+    return false
   }
 
   /// cassette 2026-10-21: a station opens its page (what's on, what it just played, about,
@@ -1164,30 +1973,67 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
   /// know has no page, so its tap still tunes in.
   override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
     tableView.deselectRow(at: indexPath, animated: true)
-    let row = sections[indexPath.section].rows[indexPath.row]
+    guard case let .station(row) = items[indexPath.row] else { return }
     guard let info = row.info else {
       play(row.radio)
       return
     }
+    open(info)
+  }
+
+  private func open(_ station: RadioCatalogStation) {
     navigationController?.pushViewController(
-      RadioStationVC(account: account, station: info),
+      RadioStationVC(account: account, station: station),
       animated: true
     )
+  }
+
+  /// A chip jumps to its section, its name landing just under the chips.
+  private func jump(toSection index: Int) {
+    guard sectionStarts.indices.contains(index) else { return }
+    tableView.scrollToRow(at: IndexPath(row: sectionStarts[index], section: 0), at: .top, animated: true)
+  }
+
+  /// On now's disc: tune in, or stop the station that's on (a live stream has no pause).
+  private func tuneInOrStop(_ station: RadioCatalogStation) {
+    guard let radio = RadioDial.radio(for: station, in: radios) else { return }
+    if playingKey == radio.id {
+      appDelegate.player.pause()
+      lastPlayingKey = ""
+      board.setOn(slug: nil)
+      tableView.reloadData()
+    } else {
+      play(radio)
+    }
   }
 
   /// The whole dial in display order is the context (each station once), so Next /
   /// Previous on the player move between stations the way a tuner would.
   private func play(_ radio: Radio) {
     var seen = Set<String>()
-    let all = sections.flatMap(\.rows).map(\.radio).filter { seen.insert($0.id).inserted }
-    guard let index = all.firstIndex(where: { $0.id == radio.id }) else { return }
-    appDelegate.player.play(context: PlayContext(
-      name: sceneTitle ?? "Radio",
-      index: index,
-      playables: all
-    ))
+    let all = items.compactMap { item -> Radio? in
+      if case let .station(row) = item { return row.radio }
+      return nil
+    }
+    .filter { seen.insert($0.id).inserted }
+    if let index = all.firstIndex(where: { $0.id == radio.id }) {
+      appDelegate.player.play(context: PlayContext(
+        name: sceneTitle ?? "Radio",
+        index: index,
+        playables: all
+      ))
+    } else {
+      appDelegate.player.play(context: RadioDial.playContext(for: radio, in: radios))
+    }
     lastPlayingKey = radio.id
+    board.setOn(slug: RadioCatalog.shared.station(forStreamUrl: radio.url)?.slug)
     tableView.reloadData()
+  }
+
+  /// A station's long-press menu, for On now's cards: the dial's own (Play, Save, its places).
+  private func menu(for station: RadioCatalogStation) -> UIMenu? {
+    guard let radio = RadioDial.radio(for: station, in: radios) else { return nil }
+    return RadioDial.menu(for: RadioRow(radio: radio, info: station)) { [weak self] in self?.play(radio) }
   }
 
   override func tableView(
@@ -1196,7 +2042,7 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
     point: CGPoint
   )
     -> UIContextMenuConfiguration? {
-    let row = sections[indexPath.section].rows[indexPath.row]
+    guard case let .station(row) = items[indexPath.row] else { return nil }
     return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
       MainActor.assumeIsolated { RadioDial.menu(for: row) { self?.play(row.radio) } }
     }
