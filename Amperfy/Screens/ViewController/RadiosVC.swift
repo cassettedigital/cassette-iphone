@@ -810,8 +810,12 @@ final class RadioStationCell: UITableViewCell {
     if let image = row.info?.image, !image.isEmpty {
       representedImage = image
       let pixels = CassetteImageLoader.markPixel(side: Self.artSide)
+      // a logo's own transparent corners show the kit's quiet fill (.stMark), not the word art's colour
       if let cached = CassetteImageLoader.shared.cachedImage(for: image, maxPixel: pixels) {
-        if CassetteImageLoader.isSharp(cached) { art.image = cached }
+        if CassetteImageLoader.isSharp(cached) {
+          art.image = cached
+          art.backgroundColor = CassetteTheme.UIColors.bg3
+        }
         return
       }
       loadTask = Task { @MainActor [weak self] in
@@ -820,6 +824,7 @@ final class RadioStationCell: UITableViewCell {
               CassetteImageLoader.isSharp(loaded) else { return }
         UIView.transition(with: art, duration: 0.2, options: .transitionCrossDissolve) {
           self.art.image = loaded
+          self.art.backgroundColor = CassetteTheme.UIColors.bg3
         }
       }
     }
@@ -1341,8 +1346,12 @@ final class RadioOnAirCard: UIControl {
     mark.image = CarPlayStyle.phoneWordArt(word: station.name, color: color, side: Self.side, scale: 3)
     guard let src = station.image, !src.isEmpty else { return }
     let pixels = CassetteImageLoader.markPixel(side: Self.side)
+    // a logo's own transparent corners show the card through them, as on the web, not the word art's fill
     if let cached = CassetteImageLoader.shared.cachedImage(for: src, maxPixel: pixels) {
-      if CassetteImageLoader.isSharp(cached) { mark.image = cached }
+      if CassetteImageLoader.isSharp(cached) {
+        mark.image = cached
+        mark.backgroundColor = .clear
+      }
       return
     }
     markTask = Task { @MainActor [weak self] in
@@ -1350,6 +1359,7 @@ final class RadioOnAirCard: UIControl {
       guard let self, let loaded, CassetteImageLoader.isSharp(loaded) else { return }
       UIView.transition(with: mark, duration: 0.2, options: .transitionCrossDissolve) {
         self.mark.image = loaded
+        self.mark.backgroundColor = .clear
       }
     }
   }
