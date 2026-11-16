@@ -130,6 +130,9 @@ for (const [k, v] of Object.entries(tasteType)) {
 const tc = [`/* ${HEAD} */`, "", "/* what every taste page shares, whatever its stock: the three faces, the corners and the type roles */", ".base {"];
 for (const [k, v] of Object.entries(T.face)) tc.push(`  --f-${k}: ${t.face[v].web};`);
 for (const [k, v] of Object.entries(tasteRadius)) tc.push(`  --r-${kebab(k)}: ${v}px;`);
+// a station's own mark, rounded like an app icon wherever it stands for the station (the founder, 2026-11-16: "the
+// 'app icon' styling"): the player kit's own shape, so the web pages round it as the Mac app and the phones do
+for (const [k, v] of Object.entries(t.shape)) tc.push(`  --r-${kebab(k)}: ${+(v * 100).toFixed(4)}%;`);
 for (const [k, v] of Object.entries(tasteType)) {
   tc.push(`  --t-${kebab(k)}: ${v.weight} ${sizeOf(v.size)} / ${v.line} var(--f-${v.face});`);
   if (v.track != null) tc.push(`  --t-${kebab(k)}-track: ${v.track}em;`);

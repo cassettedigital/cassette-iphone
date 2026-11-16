@@ -68,7 +68,7 @@ public enum CassetteKitTokens {
   }
   /// A corner as a share of the side: multiply by the part's width.
   public enum Shape {
-    public static let station: CGFloat = 0.225
+    public static let station: CGFloat = 0.18
   }
   public enum Opacity {
     public static let faint: CGFloat = 0.08
