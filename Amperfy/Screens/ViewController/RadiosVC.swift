@@ -1888,14 +1888,14 @@ class RadiosVC: UITableViewController, UISearchResultsUpdating {
 
   private var playingKey: String {
     guard appDelegate.player.isPlaying,
-          let current = appDelegate.player.currentlyPlaying as? Radio else { return "" }
+          let current = appDelegate.player.currentlyPlaying?.asRadio else { return "" }
     return current.id
   }
 
   /// The registry station playing now, for On now's ring.
   private var playingSlug: String? {
     guard appDelegate.player.isPlaying,
-          let current = appDelegate.player.currentlyPlaying as? Radio else { return nil }
+          let current = appDelegate.player.currentlyPlaying?.asRadio else { return nil }
     return RadioCatalog.shared.station(forStreamUrl: current.url)?.slug
   }
 

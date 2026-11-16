@@ -705,7 +705,7 @@ class SearchVC: BasicTableViewController {
         for: indexPath
       ) as! RadioStationCell
       guard let row = stations.first(where: { $0.radio.id == id }) else { return cell }
-      let current = appDelegate.player.isPlaying ? appDelegate.player.currentlyPlaying as? Radio : nil
+      let current = appDelegate.player.isPlaying ? appDelegate.player.currentlyPlaying?.asRadio : nil
       cell.configure(row: row, playing: current?.id == row.radio.id)
       cell.onPlayTapped = { [weak self] in self?.play(row.radio) }
       return cell
