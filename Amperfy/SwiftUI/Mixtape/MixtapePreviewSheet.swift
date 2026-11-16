@@ -225,7 +225,7 @@ struct MixtapePreviewSheet: View {
       account: account
     )
     guard !songs.isEmpty else {
-      errorMessage = "None of these tracks are on this phone yet"
+      errorMessage = "None of these tracks are on this \(UIDevice.cassetteDeviceWord) yet"
       return
     }
     appDelegate.player.play(context: PlayContext(name: mixtape.name, playables: songs))

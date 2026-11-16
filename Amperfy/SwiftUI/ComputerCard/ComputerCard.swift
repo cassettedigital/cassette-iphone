@@ -70,7 +70,7 @@ struct ComputerCard: View {
       case .syncing: return "Syncing"
       case .gettingReady: return "Getting ready"
       case .outOfReach: return "Out of reach"
-      case .phoneFull: return "Phone full"
+      case .phoneFull: return "\(UIDevice.cassetteDeviceWordTitle) full"
       case .noMusic: return "No music yet"
       case .nothingChosen: return "Nothing chosen"
       case .notSetUp: return "Not set up"
@@ -80,12 +80,12 @@ struct ComputerCard: View {
     var body: String {
       switch phase {
       case .syncing:
-        return "\(onPhone) of \(max(total, onPhone)) \(max(total, onPhone) == 1 ? "album" : "albums") on this phone"
+        return "\(onPhone) of \(max(total, onPhone)) \(max(total, onPhone) == 1 ? "album" : "albums") on this \(UIDevice.cassetteDeviceWord)"
       case .gettingReady: return "Reading your library"
       case .outOfReach: return "New music arrives when it's back"
-      case .phoneFull: return "Pick the music for this phone in Cassette on your computer"
+      case .phoneFull: return "Pick the music for this \(UIDevice.cassetteDeviceWord) in Cassette on your computer"
       case .noMusic: return "Add music to Cassette on your computer"
-      case .nothingChosen: return "Pick the music for this phone in Cassette on your computer"
+      case .nothingChosen: return "Pick the music for this \(UIDevice.cassetteDeviceWord) in Cassette on your computer"
       case .notSetUp: return "Your music plays from Cassette on your computer"
       }
     }

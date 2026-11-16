@@ -128,7 +128,7 @@ public enum CassetteSyncStatus {
     let inSentence = fallbackHubName.prefix(1).lowercased() + fallbackHubName.dropFirst()
     let hub = hubName ?? inSentence
     if pendingAlbums > 0, isPhoneFull {
-      return "This phone is full · new music waits until there's room"
+      return "This \(UIDevice.cassetteDeviceWord) is full · new music waits until there's room"
     }
     if pendingAlbums > 0, !isHubReachable {
       return "Can't reach \(hub) · new music arrives when it's back"

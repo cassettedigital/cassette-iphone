@@ -389,7 +389,7 @@ extension DetailScreenChrome {
   /// phone (the rest stays on the hub), it says so: "8 of 12 songs on this phone".
   static func songCountText(onPhone: Int, total: Int) -> String {
     if CassetteLibraryFilterProvider.shared.isOnDeviceOnly, onPhone < total {
-      return "\(onPhone) of \(total) songs on this phone"
+      return "\(onPhone) of \(total) songs on this \(UIDevice.cassetteDeviceWord)"
     }
     return "\(total) Song\(total == 1 ? "" : "s")"
   }
@@ -400,8 +400,8 @@ extension DetailScreenChrome {
     guard CassetteLibraryFilterProvider.shared.isOnDeviceOnly, onPhone < total else { return nil }
     let label = UILabel()
     label.text = onPhone == 0
-      ? "None of these \(total) songs are on this phone yet"
-      : "\(onPhone) of \(total) songs on this phone"
+      ? "None of these \(total) songs are on this \(UIDevice.cassetteDeviceWord) yet"
+      : "\(onPhone) of \(total) songs on this \(UIDevice.cassetteDeviceWord)"
     label.font = .cassette(.metadata)
     label.textColor = .cassette(.textSecondary)
     label.textAlignment = .center
@@ -485,8 +485,8 @@ extension DetailScreenChrome {
     if showsLine {
       let label = UILabel()
       label.text = onPhone == 0
-        ? "None of these \(total) songs are on this phone yet"
-        : "\(onPhone) of \(total) songs on this phone"
+        ? "None of these \(total) songs are on this \(UIDevice.cassetteDeviceWord) yet"
+        : "\(onPhone) of \(total) songs on this \(UIDevice.cassetteDeviceWord)"
       label.font = .cassette(.metadata)
       label.textColor = .cassette(.textSecondary)
       label.textAlignment = .center

@@ -26,16 +26,6 @@ import os.log
 import SwiftUI
 import UIKit
 
-// MARK: - The device in a sentence
-
-extension UIDevice {
-  /// cassette (BUG-885): this device in a sentence, "phone" or "iPad", so an iPad never reads "this phone".
-  @MainActor
-  static var cassetteDeviceWord: String {
-    current.userInterfaceIdiom == .pad ? "iPad" : "phone"
-  }
-}
-
 extension MarqueeLabel {
   func applyAmperfyStyle() {
     if trailingBuffer != 30.0 {
@@ -550,7 +540,7 @@ extension UIContentUnavailableConfiguration {
   /// explainer copy). Shared by Search and the Songs, Artists and Albums list search.
   @MainActor
   static var cassetteOnDeviceNoResults: UIContentUnavailableConfiguration {
-    cassetteNoResults(title: "No results on this phone", body: nil)
+    cassetteNoResults(title: "No results on this \(UIDevice.cassetteDeviceWord)", body: nil)
   }
 }
 

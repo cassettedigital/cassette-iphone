@@ -288,7 +288,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     let alert = UIAlertController(
       title: "Signed out",
-      message: "This phone isn't signed in to Cassette anymore: it was signed out from your account, or went unused for 90 days. Sign in again to keep your music syncing.",
+      message: "This \(UIDevice.cassetteDeviceWord) isn't signed in to Cassette anymore: it was signed out from your account, or went unused for 90 days. Sign in again to keep your music syncing.",
       preferredStyle: .alert
     )
     alert.addAction(UIAlertAction(title: "Not now", style: .cancel))

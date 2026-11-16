@@ -828,3 +828,33 @@ extension UIDevice {
     return Int64(capacity)
   }
 }
+
+// MARK: - The device in a sentence
+
+extension UIDevice {
+  /// cassette (BUG-885): is this an iPad? Read from the model name, which never changes while
+  /// the app runs, so any thread can ask (the Home computer card builds its lines off the main
+  /// thread). An iPhone-only build run on an iPad still says iPad, which is what the person holds.
+  public nonisolated static let cassetteIsIPad: Bool = {
+    if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
+      return simulated.hasPrefix("iPad")
+    }
+    var info = utsname()
+    uname(&info)
+    let machine = withUnsafeBytes(of: &info.machine) { bytes in
+      String(decoding: bytes.prefix(while: { $0 != 0 }), as: UTF8.self)
+    }
+    return machine.hasPrefix("iPad")
+  }()
+
+  /// This device in a sentence, "phone" or "iPad", so an iPad never reads "this phone".
+  /// Every on-screen "this phone" goes through here.
+  public nonisolated static var cassetteDeviceWord: String {
+    cassetteIsIPad ? "iPad" : "phone"
+  }
+
+  /// The same word for a title or a button: "Phone" or "iPad".
+  public nonisolated static var cassetteDeviceWordTitle: String {
+    cassetteIsIPad ? "iPad" : "Phone"
+  }
+}

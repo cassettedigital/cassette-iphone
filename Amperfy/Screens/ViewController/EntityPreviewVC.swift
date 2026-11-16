@@ -768,9 +768,9 @@ class EntityPreviewActionBuilder {
   }
 
   private func createRemoveFromPhoneAction(album: Album) -> UIAction {
-    UIAction(title: "Remove from This Phone", image: .trash, attributes: .destructive) { _ in
+    UIAction(title: "Remove from This \(UIDevice.cassetteDeviceWordTitle)", image: .trash, attributes: .destructive) { _ in
       let alert = UIAlertController(
-        title: "Remove \u{201C}\(album.name)\u{201D} from this phone?",
+        title: "Remove \u{201C}\(album.name)\u{201D} from this \(UIDevice.cassetteDeviceWord)?",
         message: "It stays on your computer.",
         preferredStyle: .alert
       )

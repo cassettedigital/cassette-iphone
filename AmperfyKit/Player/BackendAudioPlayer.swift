@@ -589,7 +589,7 @@ class BackendAudioPlayer: NSObject {
     eventLogger.info(
       topic: "Player Info",
       statusCode: .playerError,
-      message: "\"\(playableDisplayTitle)\" can't play on this phone (its file type, \(contentType), isn't one it plays).",
+      message: "\"\(playableDisplayTitle)\" can't play on this \(UIDevice.cassetteDeviceWord) (its file type, \(contentType), isn't one it plays).",
       displayPopup: true
     )
     responder?.notifyItemPreparationFinished()

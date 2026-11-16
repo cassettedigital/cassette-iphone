@@ -137,7 +137,7 @@ import SwiftUI
 
     private var removalTitle: String {
       guard let pendingRemoval else { return "" }
-      return "Remove \u{201C}\(pendingRemoval.name)\u{201D} from this phone?"
+      return "Remove \u{201C}\(pendingRemoval.name)\u{201D} from this \(UIDevice.cassetteDeviceWord)?"
     }
 
     private static func freeSpace() -> String {
@@ -204,7 +204,7 @@ import SwiftUI
     private var freeRow: some View {
       VStack(spacing: 0) {
         DeviceHairline()
-        DeviceValueRow(title: "Free on this phone", value: freeSpace)
+        DeviceValueRow(title: "Free on this \(UIDevice.cassetteDeviceWord)", value: freeSpace)
       }
       .background(
         UnevenRoundedRectangle(
@@ -287,7 +287,7 @@ import SwiftUI
       VStack(alignment: .leading, spacing: 0) {
         CassetteHeadingText(
           shout: "KEPT OFF",
-          answer: "this phone",
+          answer: "this \(UIDevice.cassetteDeviceWord)",
           answerColor: Color.cassette(.textSecondary)
         )
         .padding(.horizontal, CassetteHeading.sideInset)

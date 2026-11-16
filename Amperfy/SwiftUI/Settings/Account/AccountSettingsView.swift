@@ -145,7 +145,7 @@ struct AccountSettingsView: View {
                 Alert(
                   title: Text("Resync Library"),
                   message: Text(
-                    "This reads your library again from your computer. The music on this phone stays.\n\nResync now?"
+                    "This reads your library again from your computer. The music on this \(UIDevice.cassetteDeviceWord) stays.\n\nResync now?"
                   ),
                   primaryButton: .destructive(Text("Resync")) {
                     resyncLibrary(accountInfo: activeAccountInfo)

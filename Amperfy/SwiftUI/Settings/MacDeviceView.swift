@@ -290,8 +290,8 @@ import SwiftUI
 
     private var line: String {
       have >= of
-        ? "All \(DeviceFormat.count(of)) albums on this phone"
-        : "\(DeviceFormat.count(have)) of \(DeviceFormat.count(of)) albums on this phone"
+        ? "All \(DeviceFormat.count(of)) albums on this \(UIDevice.cassetteDeviceWord)"
+        : "\(DeviceFormat.count(have)) of \(DeviceFormat.count(of)) albums on this \(UIDevice.cassetteDeviceWord)"
     }
 
     var body: some View {

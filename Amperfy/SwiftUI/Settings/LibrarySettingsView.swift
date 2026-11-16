@@ -187,13 +187,13 @@ struct StorageSettingsView: View {
         // not live in, so on an on-device phone they said almost nothing.
         SettingsSection(content: {
           SettingsRow(title: "Music") { SecondaryText(onPhoneMusic) }
-          SettingsRow(title: "Free on this phone") { SecondaryText(freeSpace) }
+          SettingsRow(title: "Free on this \(UIDevice.cassetteDeviceWord)") { SecondaryText(freeSpace) }
           if !CassetteLibraryFilterProvider.shared.isOnDeviceOnly {
             SettingsRow(title: "Kept from streaming") {
               SecondaryText(completeCacheSize.description)
             }
           }
-        }, footer: "Choose what syncs to this phone in Cassette on your computer.", header: "On this phone")
+        }, footer: "Choose what syncs to this \(UIDevice.cassetteDeviceWord) in Cassette on your computer.", header: "On this \(UIDevice.cassetteDeviceWord)")
 
         if !onPhoneAlbums.isEmpty {
           SettingsSection(content: {

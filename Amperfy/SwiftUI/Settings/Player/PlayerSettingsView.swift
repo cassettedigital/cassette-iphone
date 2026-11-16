@@ -88,7 +88,7 @@ struct PlaybackSettingsView: View {
               }
             }
           },
-          footer: "Sets the quality downloaded to this phone. Your computer always keeps the original files."
+          footer: "Sets the quality downloaded to this \(UIDevice.cassetteDeviceWord). Your computer always keeps the original files."
         )
 
         if isServerModeOn {

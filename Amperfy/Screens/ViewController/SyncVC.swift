@@ -140,7 +140,7 @@ class SyncVC: UIViewController {
   func skipPressed(_ sender: Any) {
     let alert = UIAlertController(
       title: "Skip Sync",
-      message: "Skipping now leaves part of your library off this phone until the next sync.",
+      message: "Skipping now leaves part of your library off this \(UIDevice.cassetteDeviceWord) until the next sync.",
       preferredStyle: .alert
     )
     let skip = UIAlertAction(title: "Skip", style: .destructive, handler: { action in

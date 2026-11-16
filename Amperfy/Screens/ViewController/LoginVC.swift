@@ -655,7 +655,7 @@ class LoginVC: UIViewController {
 
     guard !appDelegate.storage.settings.accounts.allAccounts.contains(where: { $0 == accountInfo })
     else {
-      showErrorMsg(message: "That account is already on this phone.")
+      showErrorMsg(message: "That account is already on this \(UIDevice.cassetteDeviceWord).")
       return
     }
 
