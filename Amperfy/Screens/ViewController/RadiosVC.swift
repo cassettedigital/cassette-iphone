@@ -1003,6 +1003,17 @@ struct RadioOnAir: Equatable, Sendable {
   let now: String?
   let until: Date?
   let cover: String?
+  /// The song's own artist and title, and the show's name and picture, for the station page to draw apart.
+  var artist: String? = nil
+  var title: String? = nil
+  var show: String? = nil
+  var showImage: String? = nil
+  /// The song's own cover (the record we carry, else the station's for the song), never the show's picture.
+  var songCover: String? = nil
+
+  /// What each station's card last heard, and when: a station page opened from the dial draws it at once
+  /// (RadioStationVC; the founder, 2026-11-17: "Now playing showed, bring that image forward ... and wait").
+  @MainActor static var latest: [String: (answer: RadioOnAir, at: Date)] = [:]
 
   private struct Payload: Decodable {
     struct Show: Decodable {
@@ -1064,7 +1075,18 @@ struct RadioOnAir: Equatable, Sendable {
       return precise.date(from: stamp) ?? ISO8601DateFormatter().date(from: stamp)
     }
     if now == nil, cover == nil, until == nil { return nil }
-    return RadioOnAir(now: now, until: until, cover: cover)
+    let answer = RadioOnAir(
+      now: now,
+      until: until,
+      cover: cover,
+      artist: filled(payload.track?.artist),
+      title: filled(payload.track?.title),
+      show: filled(payload.show?.name),
+      showImage: filled(payload.show?.image),
+      songCover: [payload.match?.coverUrl, payload.track?.coverUrl].lazy.compactMap { filled($0) }.first
+    )
+    latest[slug] = (answer, Date())
+    return answer
   }
 }
 
@@ -2430,7 +2452,11 @@ final class RadioShelfCell: UICollectionViewCell {
       representedImage = image
       let pixels = CassetteImageLoader.markPixel(side: side)
       if let cached = CassetteImageLoader.shared.cachedImage(for: image, maxPixel: pixels) {
-        if CassetteImageLoader.isSharp(cached) { art.image = cached }
+        if CassetteImageLoader.isSharp(cached) {
+          art.image = cached
+          // the accent is the word picture's: a logo's own transparent corners show the kit's quiet fill
+          art.backgroundColor = CassetteTheme.UIColors.bg3
+        }
         return
       }
       loadTask = Task { @MainActor [weak self] in
@@ -2440,6 +2466,7 @@ final class RadioShelfCell: UICollectionViewCell {
         // A short fade, so the logo arrives rather than pops over the word picture.
         UIView.transition(with: art, duration: 0.2, options: .transitionCrossDissolve) {
           self.art.image = loaded
+          self.art.backgroundColor = CassetteTheme.UIColors.bg3
         }
       }
     }

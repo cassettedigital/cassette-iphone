@@ -75,6 +75,10 @@ struct RadioStationPagePayload: Decodable {
 @MainActor
 final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayable {
   private static let artSide: CGFloat = 240
+  /// How many songs before the one on now On air shows.
+  private static let recentShown = 10
+  /// How old the dial's last answer may be to open the page with (RadioOnAir.latest).
+  private static let knownFor: TimeInterval = 150
   private static let gutter = CassetteHeading.sideInset
   private static let refreshEvery: TimeInterval = 30
 
@@ -127,6 +131,8 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
 
   private var refreshTimer: Timer?
   private var loadedOnce = false
+  /// The page's first read has come back, whatever it said: the held rows are let go either way.
+  private var firstReadBack = false
   /// The last answers the cloud gave; a miss keeps them up.
   private var live: RadioStationPagePayload.Live?
   private var recent: [RadioStationPagePayload.Track] = []
@@ -237,6 +243,39 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
 
     showSimilar(RadioCatalog.shared.similarSlugs(for: station).compactMap { RadioCatalog.shared.station(slug: $0) })
     loadArt()
+    // One sequence, not jumps (the founder, 2026-11-17): On air opens at once with what the dial already knew
+    // and its rows held open, so the page's own read fills it in place and nothing below moves.
+    drawLive()
+  }
+
+  /// The song on now as the dial last heard it (RadioOnAir.latest), until the page's own read lands.
+  private var known: RadioStationPagePayload.Track? {
+    guard let last = RadioOnAir.latest[station.slug], Date().timeIntervalSince(last.at) < Self.knownFor,
+          let title = last.answer.title else { return nil }
+    return RadioStationPagePayload.Track(
+      artist: last.answer.artist ?? "",
+      title: title,
+      album: nil,
+      // the song's own cover, as the page's read draws it: a show's picture is the show row's
+      coverUrl: last.answer.songCover,
+      comment: nil,
+      playedAt: nil,
+      match: nil
+    )
+  }
+
+  /// The show on now as the dial last heard it, until the page's own read lands.
+  private var knownShow: RadioStationPagePayload.Show? {
+    guard let last = RadioOnAir.latest[station.slug], Date().timeIntervalSince(last.at) < Self.knownFor,
+          let name = last.answer.show else { return nil }
+    return RadioStationPagePayload.Show(
+      name: name,
+      host: nil,
+      tagline: nil,
+      starts: nil,
+      until: last.answer.until.map { ISO8601DateFormatter().string(from: $0) },
+      image: last.answer.showImage
+    )
   }
 
   override func viewIsAppearing(_ animated: Bool) {
@@ -393,7 +432,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       return
     }
     if let cached = CassetteImageLoader.shared.cachedImage(for: src), CassetteImageLoader.isSharp(cached) {
-      art.image = cached
+      showLogo(cached)
       lighter.lightUp(image: cached, key: "radio:\(src)")
       return
     }
@@ -401,12 +440,20 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       let loaded = await CassetteImageLoader.shared.image(for: src)
       guard let self else { return }
       if let loaded, CassetteImageLoader.isSharp(loaded) {
-        art.image = loaded
+        showLogo(loaded)
         lighter.lightUp(image: loaded, key: "radio:\(src)")
       } else {
         lighter.lightUp(image: wordArt, key: "radio-word:\(station.slug)")
       }
     }
+  }
+
+  /// The station's own logo over its word picture. The accent fill is the word picture's; a logo sits on the
+  /// kit's quiet fill, so a logo's own transparent corners (or an older catalog's rounded file) never show
+  /// the accent behind it (the founder, 2026-11-17: The Current's "blue corners"), as the dial's rows do.
+  private func showLogo(_ logo: UIImage) {
+    art.image = logo
+    art.backgroundColor = CassetteTheme.UIColors.bg3
   }
 
   @objc
@@ -573,6 +620,10 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       // The station route is newer than the now-playing route; until it ships, what's
       // on still comes from the route the player already reads.
       await self?.refreshFromNowPlaying(asked: asked)
+      // no songs came: the held rows go, and what the dial knew stays
+      guard let self, !firstReadBack else { return }
+      firstReadBack = true
+      drawLive()
     }
   }
 
@@ -637,10 +688,12 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       return asked < last.at.addingTimeInterval(Self.cloudLag) ? last.track : nil
     }
     // The page's copy of the same song carries its cover and its record.
-    let now = heard.flatMap { h in page?.key == h.key ? page : h } ?? page
-    let show = live?.show
+    let now = heard.flatMap { h in page?.key == h.key ? page : h } ?? page ?? (loadedOnce ? nil : known)
+    let show = live?.show ?? (loadedOnce ? nil : knownShow)
     // The radio can hear a new song before the page catches up: never the song on now twice.
-    let log = recent.filter { $0.key != now?.key }.prefix(10)
+    let log = recent.filter { $0.key != now?.key }.prefix(Self.recentShown)
+    // Until the page's read lands, the songs before the one on now are held open as quiet rows the same size.
+    let waiting = loadedOnce || firstReadBack ? 0 : (station.hasRecentPlays == true ? Self.recentShown : 0)
     let next: String? = {
       if let n = live?.next?.first {
         let at = Self.clock(n.starts).map { " at \($0)" } ?? ""
@@ -658,13 +711,14 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       log.map { [$0.key, Self.ago($0.playedAt, now: Date()), $0.match?.albumSlug].map { $0 ?? "" }.joined(separator: "|") }
         .joined(separator: "/"),
       next ?? "",
+      "\(waiting)",
     ].joined(separator: "\n")
     guard signature != drawn else { return }
     drawn = signature
 
     onAirBlock.arrangedSubviews.forEach { $0.removeFromSuperview() }
     headings.removeAll { $0.shout == "On air" }
-    guard show != nil || now != nil || !log.isEmpty else {
+    guard show != nil || now != nil || !log.isEmpty || waiting > 0 else {
       onAirBlock.isHidden = true
       return
     }
@@ -683,6 +737,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
     for play in log {
       list.addArrangedSubview(songRow(play, cover: play.coverUrl ?? play.match?.coverUrl, isNow: false, at: clockNow))
     }
+    for _ in 0 ..< waiting { list.addArrangedSubview(waitingRow()) }
     if let next {
       list.addArrangedSubview(Self.label(next, font: .cassette(.metadata), color: .cassette(.textTertiary), lines: 2))
     }
@@ -703,8 +758,18 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       if let cached = CassetteImageLoader.shared.cachedImage(for: src, maxPixel: pixels) {
         picture.image = cached
       } else {
+        // any size already in memory stands in at once (the cover the dial was just showing); one that comes
+        // late fades in over the quiet square rather than popping
+        let standIn = CassetteImageLoader.shared.anyCachedImage(for: src)
+        picture.image = standIn
         Task { @MainActor [weak picture] in
-          picture?.image = await CassetteImageLoader.shared.image(for: src, maxPixel: pixels)
+          let loaded = await CassetteImageLoader.shared.image(for: src, maxPixel: pixels)
+          guard let picture, let loaded else { return }
+          if standIn != nil {
+            picture.image = loaded
+          } else {
+            UIView.transition(with: picture, duration: 0.25, options: .transitionCrossDissolve) { picture.image = loaded }
+          }
         }
       }
     }
@@ -734,6 +799,37 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
     row.spacing = 12
     row.isAccessibilityElement = true
     row.accessibilityLabel = ["On air", show.name, detail].filter { !$0.isEmpty }.joined(separator: ", ")
+    return row
+  }
+
+  /// A song row's quiet stand-in while the page's read is out: a square and two bars where the cover, the
+  /// title and the artist will be, built from the same parts so it is exactly as tall.
+  private func waitingRow() -> UIView {
+    func bar(_ font: UIFont, width: CGFloat) -> UIView {
+      let line = Self.label(" ", font: font, color: .clear)
+      let fill = UIView()
+      fill.backgroundColor = .cassette(.surfaceElevated)
+      fill.layer.cornerRadius = 3
+      fill.translatesAutoresizingMaskIntoConstraints = false
+      line.addSubview(fill)
+      NSLayoutConstraint.activate([
+        fill.leadingAnchor.constraint(equalTo: line.leadingAnchor),
+        fill.centerYAnchor.constraint(equalTo: line.centerYAnchor),
+        fill.heightAnchor.constraint(equalTo: line.heightAnchor, multiplier: 0.55),
+        fill.widthAnchor.constraint(equalToConstant: width),
+      ])
+      return line
+    }
+    let lines = UIStackView(arrangedSubviews: [bar(.cassette(.miniTitle), width: 150), bar(.cassette(.cardSubtitle), width: 96)])
+    lines.axis = .vertical
+    lines.spacing = 2
+    let content = UIStackView(arrangedSubviews: [Self.picture(side: 44, radius: 3, src: nil), lines])
+    content.axis = .horizontal
+    content.alignment = .center
+    content.spacing = 12
+    let row = RadioSongRow(content: content)
+    row.isUserInteractionEnabled = false
+    row.isAccessibilityElement = false
     return row
   }
 
