@@ -94,6 +94,16 @@ public final class IntentExecutor {
   private var lastArtworkManifestAt: Date?
   private var lastManifestOwnedCount = -1
   private static let artworkManifestMinInterval: TimeInterval = 300 // 5 min
+  /// Covers the computer changed that the last pass had no room for (the per-pass cap).
+  /// While set, the next poll reads the manifest again instead of waiting out the 5
+  /// minutes, and the poll counts as work so the pace stays brisk. Without it the
+  /// leftovers did not "roll to the next poll": that poll skipped the manifest, found
+  /// nothing to do, and the idle pace put the next one 15 minutes out, so a library
+  /// whose covers all moved converged 12 albums every 15-20 minutes (BUG-1042).
+  private var coverBacklogPending = false
+  /// Albums whose forced cover pull failed this launch. They go to the back of the
+  /// line, so a few the computer cannot answer for never hold the cap against the rest.
+  private var coverPullFailedThisLaunch = Set<String>()
 
   /// Throttle for the track-freshness manifest fetch (GET
   /// /devices/:id/track-freshness) — the audio sibling of the artwork
@@ -332,7 +342,18 @@ public final class IntentExecutor {
     // Force a fresh full-inventory report (bypass the throttle) so the cloud
     // reconcile runs against current truth, then apply what it queued.
     lastFullInventoryReportAt = nil
+    // The gesture means "show me what my computer has now", covers and re-rips included.
+    checkComputerChangesOnNextPoll()
     await handlePendingIntents()
+  }
+
+  /// The next poll reads the artwork manifest and the track-freshness manifest again,
+  /// skipping their 5-minute rests. For the moments someone is looking for a change they
+  /// just made on their computer: the app coming to the front, and pull-to-refresh. Each
+  /// is one small request; the per-pass caps still bound the downloads (BUG-1042).
+  public func checkComputerChangesOnNextPoll() {
+    lastArtworkManifestAt = nil
+    lastTrackFreshnessSweepAt = nil
   }
 
   /// Report this phone's full inventory now (throttle bypassed) and run a pass, without
@@ -832,6 +853,7 @@ public final class IntentExecutor {
       .fetchAllSubsonicTrackIds().count
     let manifestDue = !hasReadManifestThisLaunch
       || ownedCount != lastManifestOwnedCount
+      || coverBacklogPending
       || (lastArtworkManifestAt.map {
         Date().timeIntervalSince($0) >= Self.artworkManifestMinInterval
       } ?? true)
@@ -976,6 +998,7 @@ public final class IntentExecutor {
     // tolerant of catalog-vs-local drift ("Abbey Road" vs "Abbey Road (Remastered)"),
     // and re-deriving a stricter key downstream would silently stop protecting picks.
     hasReadManifestThisLaunch = true
+    coverBacklogPending = false
     guard !jobs.isEmpty else { return }
 
     // 3. Main actor: version-gate each job. Unchanged → skip (cheap). Changed
@@ -1001,7 +1024,21 @@ public final class IntentExecutor {
     // and skip those pulls for this pass. Cloud-hosted work (artist images, picks)
     // still runs — only the LAN-dependent step is gated.
     var canReachPlayer: Bool?
-    for job in jobs {
+    // Covers the computer changed go first. The jobs come out of a dictionary, in an
+    // order that changes every launch, so the album someone just re-covered on their
+    // Mac could sit behind the per-pass cap while unchanged albums were walked first.
+    let coverChanged: (ArtworkJob) -> Bool = { job in
+      guard let local = job.localCoverVersion else { return false }
+      return local != self.appliedCoverFingerprint(forAlbumKey: job.albumKey)
+    }
+    let failedBefore = coverPullFailedThisLaunch
+    let changedJobs = jobs.filter(coverChanged)
+    let orderedJobs = changedJobs.filter { !failedBefore.contains($0.albumKey) }
+      + changedJobs.filter { failedBefore.contains($0.albumKey) }
+      + jobs.filter { !coverChanged($0) }
+    var coverPullsDeferred = 0
+    var coverPullsSucceeded = 0
+    for job in orderedJobs {
       if appliedThisPass.contains(job.albumKey) { continue }
       let stored = appliedArtworkVersion(forAlbumKey: job.albumKey)
 
@@ -1038,6 +1075,11 @@ public final class IntentExecutor {
       if mayPullCover {
         if canReachPlayer == nil { canReachPlayer = await isCassettePlayerReachable() }
         if canReachPlayer != true { mayPullCover = false }
+      } else if coverBytesChanged, canReachPlayer == true {
+        // Out of room this pass, with the computer in reach. Counted so the next poll
+        // comes back for it (see the end of the pass). Not counted when the computer is
+        // out of reach, so a phone away from home keeps its slow pace.
+        coverPullsDeferred += 1
       }
 
       // A LOCALLY broken artist image — a shared row, the wrong identity, or missing
@@ -1127,7 +1169,11 @@ public final class IntentExecutor {
         )
         if ok {
           setAppliedCoverFingerprint(localCover, forAlbumKey: job.albumKey)
+          coverPullsSucceeded += 1
+          coverPullFailedThisLaunch.remove(job.albumKey)
           print("Cassette poll: folder cover refreshed - '\(job.albumKey)'")
+        } else {
+          coverPullFailedThisLaunch.insert(job.albumKey)
         }
       }
       // Record the applied version after the best-effort refreshes above.
@@ -1144,7 +1190,12 @@ public final class IntentExecutor {
         "Cassette poll: adopted \(adoptedWithoutPull) cover fingerprint(s) without re-pulling (fresh install)"
       )
     }
-    if refreshed > 0 { artworkDidWorkThisPass = true }
+    // Leftover covers keep the poll brisk: otherwise a pass that only had room for
+    // some of them would let the idle pace push the rest 15 minutes out. Only while
+    // pulls are landing: a pass where every pull failed falls back to the 5-minute
+    // rest, so albums the computer cannot answer for never poll every 30 seconds.
+    coverBacklogPending = coverPullsDeferred > 0 && coverPullsSucceeded > 0
+    if refreshed > 0 || coverBacklogPending { artworkDidWorkThisPass = true }
     if refreshed > 0 {
       print("Cassette poll: refreshed artwork for \(refreshed) owned album(s)")
     }
@@ -1431,8 +1482,9 @@ public final class IntentExecutor {
   /// Ceiling on forced folder-cover re-pulls per poll. The version loop is serial and
   /// on the main actor, so an unbounded first pass over a large library would stall
   /// the app; the fingerprint compare is idempotent, so anything skipped simply rolls
-  /// to the next poll and the library converges over a few of them.
-  private static let maxForcedCoverPullsPerPass = 12
+  /// to the next poll (`coverBacklogPending` makes that poll read the manifest again)
+  /// and the library converges over a few of them, 30 seconds apart.
+  private static let maxForcedCoverPullsPerPass = 24
 
   /// Namespaced per ACCOUNT. The album key is only artist|album, so two accounts on
   /// one device sharing an album would otherwise share a stamp — account B would read

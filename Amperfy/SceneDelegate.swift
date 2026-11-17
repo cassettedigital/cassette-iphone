@@ -211,6 +211,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
       print("Cassette poll: app became active -> triggering poll")
     #endif
     Task { @MainActor in
+      // Opening the app is when someone looks for a change they just made on their
+      // computer (a new cover, a re-rip), so check for those now, not on the 5-minute rest.
+      IntentExecutor.shared.checkComputerChangesOnNextPoll()
       await IntentExecutor.shared.handlePendingIntents()
       self.scheduleNextCassettePoll()
     }
