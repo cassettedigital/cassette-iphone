@@ -106,11 +106,12 @@ public enum HomeSection: Int, Sendable, CaseIterable, Codable {
     .aroundNow,
     .moodDoors,
     .yourPlaylists,
-    .radios,
     .moreLikeLately,
     .forgottenAlbums,
     .fromYourMixes,
     .recentlyPlayedArtists,
+    // Radio after everything of yours, as the cloud's Home has it (founder, 2026-11-20)
+    .radios,
   ]
 
   /// cassette Patch 035: the sections the home-editor UI is allowed

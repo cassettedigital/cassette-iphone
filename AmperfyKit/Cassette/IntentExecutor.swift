@@ -304,6 +304,13 @@ public final class IntentExecutor {
     // report or out-of-band deletion. Throttled — see fullInventoryReportMinInterval.
     // The response carries the catalog-blind album grouping (Phase 1, Gap 1) —
     // apply it so the device's albums match the web.
+    //
+    // A sync wave that just finished looks again now. The regroup that turns newly arrived songs
+    // into albums rides this report, which rests two minutes between runs, so the last albums of a
+    // wave could sit unseen after the sync line went away (founder, 2026-11-20). The rest is
+    // skipped, and the library and Home repaint once the status has flipped (below).
+    let waveJustEnded = CassetteSyncStatus.isActive && !downloadsInFlightThisPass
+    if waveJustEnded { lastFullInventoryReportAt = nil }
     let inventoryResponse = await reportFullInventoryIfDue()
     if let inventoryResponse {
       await applyAlbumGrouping(inventoryResponse)
@@ -320,6 +327,11 @@ public final class IntentExecutor {
       pendingAlbums: pendingAlbumAddsThisPass,
       hubReachable: hubReachable
     )
+    // The wave is over: Library and Home look at the phone's music now, whether or not the
+    // regroup above made anything new, instead of waiting for the next change to nudge them.
+    if waveJustEnded {
+      CassetteOwnershipNotifier.shared.ownershipDidChangeNow()
+    }
   }
 
   /// Pull-to-refresh entry point (B2). Drives the full on-demand convergence
