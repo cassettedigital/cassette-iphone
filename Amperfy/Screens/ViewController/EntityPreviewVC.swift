@@ -821,7 +821,7 @@ class EntityPreviewActionBuilder {
   }
 
   /// cassette 2026-10-21 (founder: "Go to site" said nothing): names the place it goes,
-  /// "Go to kexp.org", "Go to somafm.com".
+  /// "Go to kexp.org", "Go to wfmu.org".
   private func createGoToSiteUrl(url: URL) -> UIAction {
     let host = url.host()?.replacingOccurrences(of: #"^www\."#, with: "", options: .regularExpression)
     let title = host.map { $0.isEmpty ? "Go to Website" : "Go to \($0)" } ?? "Go to Website"
