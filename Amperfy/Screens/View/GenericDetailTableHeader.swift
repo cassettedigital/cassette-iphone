@@ -467,6 +467,10 @@ class GenericDetailTableHeader: UIView {
   private var titleRoomHeight: NSLayoutConstraint?
   /// The lit head's whole name, refitted to its room whenever the width is known.
   private var roomName: String?
+  /// The voice the name is set in while it fits three lines: the page title on an album or
+  /// playlist, the hero name on an artist.
+  private var roomStyle: CassetteTextStyle = .pageTitle
+  private var roomLineHeight: CGFloat = 0.92
 
   private enum HeroLayout {
     case classic
@@ -820,7 +824,7 @@ class GenericDetailTableHeader: UIView {
     // artwork's 240×240 + labels are crushed to ~14pt and a constraint breaks.
     let hInset = directionalLayoutMargins.leading + directionalLayoutMargins.trailing
     let innerWidth = max(0, tableWidth - hInset)
-    if heroLayout == .room, innerWidth != lastRoomWidth {
+    if roomName != nil, innerWidth != lastRoomWidth {
       fitRoomTitle(width: innerWidth)
     }
     let stackH = mainStack.systemLayoutSizeFitting(
@@ -895,7 +899,10 @@ class GenericDetailTableHeader: UIView {
           color: tint.text,
           lineHeightMultiple: 1.05
         )
-        answerLabel.numberOfLines = entityContainer is Album ? 2 : 3
+        // E-record-head (design wave 6): on a lit record head the artist is one line, cut with an
+        // ellipsis and whole for VoiceOver, so the facts and keys under it never move.
+        answerLabel.numberOfLines = heroLayout == .room ? 1 : (entityContainer is Album ? 2 : 3)
+        answerLabel.lineBreakMode = .byTruncatingTail
         answerLabel.isHidden = false
         answerLabel.isUserInteractionEnabled = lineIsLink
         answerLabel.accessibilityTraits = lineIsLink ? .link : .staticText
@@ -1029,29 +1036,28 @@ class GenericDetailTableHeader: UIView {
       // Line height 0.92 as in the mock. Unverified on a device: if the caps clip at the
       // top, drop the multiple and use a small baselineOffset instead.
       roomName = name
+      roomStyle = .pageTitle
+      roomLineHeight = 0.92
       titleLabel.adjustsFontSizeToFitWidth = false
       titleLabel.accessibilityLabel = name
       titleLabel.layer.shadowOpacity = 0
       fitRoomTitle(width: lastRoomWidth)
     case .artistPhoto, .artistFan, .artistCircle:
-      roomName = nil
-      titleRoomHeight?.isActive = false
-      titleLabel.attributedText = NSAttributedString.cassette(
-        name,
-        .heroName,
-        color: .cassette(.textPrimary),
-        lineHeightMultiple: 0.9
-      )
-      titleLabel.numberOfLines = 3
-      titleLabel.adjustsFontSizeToFitWidth = true
-      titleLabel.minimumScaleFactor = 0.6
+      // the artist's name keeps the record heads' room (R2-head.long-name, design wave 6): it
+      // was shrunk to fit, broke inside a word and was cut silently
+      roomName = name
+      roomStyle = .heroName
+      roomLineHeight = 0.9
+      titleLabel.adjustsFontSizeToFitWidth = false
       titleLabel.accessibilityLabel = name
-      // The mock's text-shadow: 0 2px 18px rgba(0,0,0,.5).
+      // The mock's text-shadow (0 2px 18px rgba(0,0,0,.5)) lifts the name off a photo; on the
+      // paper, beside a fan or a circle, it smudged.
       titleLabel.layer.shadowColor = UIColor.black.cgColor
-      titleLabel.layer.shadowOpacity = 0.5
+      titleLabel.layer.shadowOpacity = layout == .artistPhoto ? 0.5 : 0
       titleLabel.layer.shadowRadius = 9
       titleLabel.layer.shadowOffset = CGSize(width: 0, height: 2)
-    }
+      fitRoomTitle(width: lastRoomWidth)
+  }
   }
 
   /// The width the lit head's name was last fitted to.
@@ -1065,7 +1071,7 @@ class GenericDetailTableHeader: UIView {
     lastRoomWidth = width
     let ink = UIColor.cassette(.textPrimary)
     func set(_ style: CassetteTextStyle, _ text: String) -> NSAttributedString {
-      NSAttributedString.cassette(text, style, color: ink, lineHeightMultiple: 0.92)
+      NSAttributedString.cassette(text, style, color: ink, lineHeightMultiple: roomLineHeight)
     }
     func height(_ text: NSAttributedString) -> CGFloat {
       ceil(text.boundingRect(
@@ -1074,8 +1080,8 @@ class GenericDetailTableHeader: UIView {
         context: nil
       ).height)
     }
-    let room = height(set(.pageTitle, "A\nA\nA"))
-    let whole = set(.pageTitle, name)
+    let room = height(set(roomStyle, "A\nA\nA"))
+    let whole = set(roomStyle, name)
     if height(whole) <= room + 1 {
       titleLabel.attributedText = whole
       titleLabel.numberOfLines = 3
