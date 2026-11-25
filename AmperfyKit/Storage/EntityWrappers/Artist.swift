@@ -267,8 +267,18 @@ extension Artist: PlayableContainable {
     try await librarySyncer.sync(artist: self)
   }
 
+  /// D46 (design wave 6): an artist is always a circle, their photo, else one of their records,
+  /// never a letter. With no photo of their own on the phone, the first of their records with a
+  /// cover stands in (as the artist page's fan already does); only an artist with neither falls
+  /// to the placeholder.
   public func getArtworkCollection(theme: ThemePreference) -> ArtworkCollection {
-    ArtworkCollection(defaultArtworkType: .artist, singleImageEntity: self)
+    if !hasOwnPhotoOnDisk,
+       let record = albums.first(where: { album in
+         album.artwork?.imagePath.map { FileManager.default.fileExists(atPath: $0) } ?? false
+       }) {
+      return ArtworkCollection(defaultArtworkType: .artist, singleImageEntity: record)
+    }
+    return ArtworkCollection(defaultArtworkType: .artist, singleImageEntity: self)
   }
 
   public var containerIdentifier: PlayableContainerIdentifier { PlayableContainerIdentifier(
