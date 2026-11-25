@@ -84,7 +84,8 @@ class GenericTableCell: BasicTableCell {
     } else if container is Podcast {
       infoLabelWidthConstraint.constant = 140
     }
-    accessoryType = .disclosureIndicator
+    // IOS-09 (design wave 6): no grey arrow; a row opens its record, as every other list's does.
+    accessoryType = .none
     // cassette Patch 032: route through the canonical scale. Title drops
     // 17pt -> 16pt rowTitle to match track and other library rows.
     // Subtitle is metadata (12pt medium mono); the trailing info column

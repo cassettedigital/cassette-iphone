@@ -76,7 +76,8 @@ class PlaylistTableCell: BasicTableCell {
       details: DetailInfoType(type: .short, settings: appDelegate.storage.settings)
     )
     infoLabel.textAlignment = (traitCollection.horizontalSizeClass == .regular) ? .right : .left
-    accessoryType = .disclosureIndicator
+    // IOS-09 (design wave 6): no grey arrow; a row opens its record, as every other list's does.
+    accessoryType = .none
     backgroundColor = UIColor.cassette(.surfaceBase)
   }
 }

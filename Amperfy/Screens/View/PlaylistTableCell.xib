@@ -61,7 +61,7 @@
                     </view>
                 </subviews>
                 <constraints>
-                    <constraint firstItem="TkT-gC-6LF" firstAttribute="leading" secondItem="H2p-sc-9uM" secondAttribute="leadingMargin" constant="16" id="2vG-6C-BAk"/>
+                    <constraint firstItem="TkT-gC-6LF" firstAttribute="leading" secondItem="H2p-sc-9uM" secondAttribute="leading" constant="20" id="2vG-6C-BAk"/>
                     <constraint firstItem="TkT-gC-6LF" firstAttribute="centerY" secondItem="H2p-sc-9uM" secondAttribute="centerY" id="HCl-M9-BrL"/>
                     <constraint firstItem="TxE-Fh-ozu" firstAttribute="leading" secondItem="TkT-gC-6LF" secondAttribute="trailing" constant="8" id="OcW-Ql-tV0"/>
                     <constraint firstAttribute="trailingMargin" secondItem="TxE-Fh-ozu" secondAttribute="trailing" id="bfa-IE-DcM">
