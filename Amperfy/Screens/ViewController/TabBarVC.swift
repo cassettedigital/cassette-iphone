@@ -218,16 +218,57 @@ class TabBarVC: UITabBarController {
   var compactWidthConstraint: NSLayoutConstraint?
   var inlineHeightConstraint: NSLayoutConstraint?
 
+  /// The accessory slot `compactWidthConstraint` and `inlineHeightConstraint` were made
+  /// against. Weak: UIKit frees a slot once the pill has left it.
+  private weak var slotConstraintsHost: UIView?
+
   private enum RailLayout: Equatable { case inline, regularWide(CGFloat), compact }
   private var appliedRailLayout: RailLayout?
 
+  /// cassette (BUG-1180): the constraints that size the pill from its slot are made against
+  /// the slot the pill is in now, and made again as soon as it is in another one. UIKit
+  /// builds a new slot each time the accessory comes back (the first play after an empty
+  /// queue) and frees the old one, while a constraint holds its views unretained, so one
+  /// made against the old slot points at freed memory. Activating that one quit the app
+  /// on the first play under iOS 27 ("no common ancestor"). The old pair is dropped
+  /// without touching it: UIKit removed it when the pill left its slot. Returns false
+  /// while the pill is in no slot, when there is nothing to size it from.
+  private func refreshSlotConstraints(for glass: UIView) -> Bool {
+    guard let slot = glass.superview else { return false }
+    guard slot !== slotConstraintsHost else { return true }
+    compactWidthConstraint = glass.widthAnchor.constraint(equalTo: slot.widthAnchor)
+    compactWidthConstraint?.priority = UILayoutPriority(999)
+    inlineHeightConstraint = glass.heightAnchor.constraint(equalTo: slot.heightAnchor)
+    inlineHeightConstraint?.priority = UILayoutPriority(999)
+    slotConstraintsHost = slot
+    appliedRailLayout = nil
+    return true
+  }
+
+  /// Auto Layout throws when a constraint's two views have no common ancestor.
+  private static func shareAncestor(_ first: UIView, _ second: UIView) -> Bool {
+    func root(of view: UIView) -> UIView {
+      var top = view
+      while let next = top.superview { top = next }
+      return top
+    }
+    return root(of: first) === root(of: second)
+  }
+
   func configureTraitChangesForMiniPlayer() {
     guard let miniPlayer else { return }
+    let glass = miniPlayer.glassContainer
+    // Out of every slot (nothing queued): nothing to size it from until it is back in one,
+    // and whatever was applied went with the slot.
+    guard refreshSlotConstraints(for: glass) else {
+      appliedRailLayout = nil
+      return
+    }
     // cassette (rail): one read of the accessory trait decides the container
     // constraints, idempotently, so UIKit's minimize/expand animation is never
     // fought by a constraint pass that disagrees with it halfway through. The
     // pill's own content is the same in both slots (MiniPlayerView).
-    let isInline = miniPlayer.glassContainer.traitCollection.tabAccessoryEnvironment == .inline
+    let isInline = glass.traitCollection.tabAccessoryEnvironment == .inline
     let wanted: RailLayout
     if isInline {
       wanted = .inline
@@ -254,29 +295,31 @@ class TabBarVC: UITabBarController {
       centerConstraint?.isActive = false
       regularWidthConstraint?.isActive = false
       compactWidthConstraint?.isActive = true
-      if inlineHeightConstraint == nil, let host = miniPlayer.glassContainer.superview {
-        inlineHeightConstraint = miniPlayer.glassContainer.heightAnchor
-          .constraint(equalTo: host.heightAnchor)
-        inlineHeightConstraint?.priority = UILayoutPriority(999)
-      }
       inlineHeightConstraint?.isActive = true
     case let .regularWide(playerWidth):
       inlineHeightConstraint?.isActive = false
       centerConstraint?.isActive = false
-      centerConstraint = miniPlayer.glassContainer.safeAreaLayoutGuide.centerXAnchor.constraint(
-        equalTo: mainContent().safeAreaLayoutGuide.centerXAnchor,
-        constant: 0
-      )
+      centerConstraint = nil
       compactWidthConstraint?.isActive = false
       regularWidthConstraint?.isActive = false
-      regularWidthConstraint = miniPlayer.glassContainer.widthAnchor
-        .constraint(equalToConstant: playerWidth)
+      regularWidthConstraint = glass.widthAnchor.constraint(equalToConstant: playerWidth)
       regularWidthConstraint?.priority = UILayoutPriority(999)
-      centerConstraint?.priority = UILayoutPriority(999)
       regularWidthConstraint?.isActive = true
-      centerConstraint?.isActive = true
       heightConstraint?.constant = 60.0
       heightConstraint?.isActive = true
+      // Centred on the content beside the sidebar, which sits in another part of the
+      // view tree than the slot. Only when the two are joined; otherwise the next
+      // layout pass tries again.
+      let content = mainContent()
+      if Self.shareAncestor(glass, content) {
+        centerConstraint = glass.safeAreaLayoutGuide.centerXAnchor.constraint(
+          equalTo: content.safeAreaLayoutGuide.centerXAnchor
+        )
+        centerConstraint?.priority = UILayoutPriority(999)
+        centerConstraint?.isActive = true
+      } else {
+        appliedRailLayout = nil
+      }
     case .compact:
       inlineHeightConstraint?.isActive = false
       heightConstraint?.constant = 48.0
@@ -286,8 +329,8 @@ class TabBarVC: UITabBarController {
       compactWidthConstraint?.isActive = true
     }
 
-    miniPlayer.glassContainer.setNeedsLayout()
-    miniPlayer.glassContainer.layoutIfNeeded()
+    glass.setNeedsLayout()
+    glass.layoutIfNeeded()
   }
 
   override func viewWillLayoutSubviews() {
@@ -309,14 +352,8 @@ class TabBarVC: UITabBarController {
     let shown = bottomAccessory != nil
     guard wanted != shown else { return }
     setBottomAccessory(wanted ? miniPlayerAccessory : nil, animated: animated)
-    guard wanted, let miniPlayer, let host = miniPlayer.glassContainer.superview else { return }
-    // Back in a slot: the host-relative constraints point at the old host, so remake them
-    // and let the rail pass choose the layout again.
-    compactWidthConstraint?.isActive = false
-    compactWidthConstraint = miniPlayer.glassContainer.widthAnchor.constraint(equalTo: host.widthAnchor)
-    compactWidthConstraint?.priority = UILayoutPriority(999)
-    inlineHeightConstraint?.isActive = false
-    inlineHeightConstraint = nil
+    // In a slot again, or out of one: the rail pass makes the slot constraints against
+    // whichever slot UIKit put the pill in (refreshSlotConstraints) and lays it out again.
     appliedRailLayout = nil
     configureTraitChangesForMiniPlayer()
   }
