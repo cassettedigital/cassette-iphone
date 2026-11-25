@@ -459,6 +459,15 @@ class GenericDetailTableHeader: UIView {
 
   /// How the hero is drawn right now: the configured style resolved against the width
   /// and, for an artist, what is on the phone.
+  /// The name's room in a lit record head (R2-head.long-name, the founder's pick on
+  /// 2026-11-24, "B. Grows up"): three lines tall, the name sat on its foot so extra lines climb
+  /// and the artist line, facts and keys never move. Only the lit record head (`.room`) keeps it;
+  /// every other head hugs its name.
+  private let titleRoom = UIView()
+  private var titleRoomHeight: NSLayoutConstraint?
+  /// The lit head's whole name, refitted to its room whenever the width is known.
+  private var roomName: String?
+
   private enum HeroLayout {
     case classic
     case room
@@ -586,7 +595,22 @@ class GenericDetailTableHeader: UIView {
     artworkWrap.addSubview(fanView)
     fanView.isHidden = true
 
-    contentColumn.addArrangedSubview(titleLabel)
+    titleRoom.translatesAutoresizingMaskIntoConstraints = false
+    titleLabel.translatesAutoresizingMaskIntoConstraints = false
+    titleRoom.addSubview(titleLabel)
+    let hug = titleLabel.topAnchor.constraint(equalTo: titleRoom.topAnchor)
+    hug.priority = .defaultLow
+    let room = titleRoom.heightAnchor.constraint(equalToConstant: 0)
+    room.priority = UILayoutPriority(999)
+    titleRoomHeight = room
+    NSLayoutConstraint.activate([
+      titleLabel.bottomAnchor.constraint(equalTo: titleRoom.bottomAnchor),
+      titleLabel.leadingAnchor.constraint(equalTo: titleRoom.leadingAnchor),
+      titleLabel.trailingAnchor.constraint(equalTo: titleRoom.trailingAnchor),
+      titleLabel.topAnchor.constraint(greaterThanOrEqualTo: titleRoom.topAnchor),
+      hug,
+    ])
+    contentColumn.addArrangedSubview(titleRoom)
     contentColumn.addArrangedSubview(nameTextField)
     contentColumn.addArrangedSubview(subtitleButton)
     contentColumn.addArrangedSubview(answerLabel)
@@ -796,6 +820,9 @@ class GenericDetailTableHeader: UIView {
     // artwork's 240×240 + labels are crushed to ~14pt and a constraint breaks.
     let hInset = directionalLayoutMargins.leading + directionalLayoutMargins.trailing
     let innerWidth = max(0, tableWidth - hInset)
+    if heroLayout == .room, innerWidth != lastRoomWidth {
+      fitRoomTitle(width: innerWidth)
+    }
     let stackH = mainStack.systemLayoutSizeFitting(
       CGSize(width: innerWidth, height: UIView.layoutFittingCompressedSize.height),
       withHorizontalFittingPriority: .required,
@@ -935,7 +962,7 @@ class GenericDetailTableHeader: UIView {
     if layout.isLit {
       applyLitSpacing(layout: layout, hasMeta: !infoText.isEmpty)
     } else {
-      contentColumn.setCustomSpacing(UIStackView.spacingUseDefault, after: titleLabel)
+      contentColumn.setCustomSpacing(UIStackView.spacingUseDefault, after: titleRoom)
       // Quiet meta (year) sits tight under the artist. When that line is absent,
       // keep real air between artist and the play controls — a hidden infoLabel
       // collapses its trailing spacing and used to leave play crushed under the
@@ -970,10 +997,12 @@ class GenericDetailTableHeader: UIView {
 
     if isEditing {
       titleLabel.isHidden = true
+      titleRoom.isHidden = true
       nameTextField.isHidden = false
       nameTextField.text = entityContainer.name
     } else {
       titleLabel.isHidden = false
+      titleRoom.isHidden = false
       nameTextField.isHidden = true
     }
 
@@ -986,6 +1015,8 @@ class GenericDetailTableHeader: UIView {
   private func applyTitle(name: String, layout: HeroLayout) {
     switch layout {
     case .classic:
+      roomName = nil
+      titleRoomHeight?.isActive = false
       titleLabel.attributedText = nil
       titleLabel.font = UIFont.cassette(.heroTitle)
       titleLabel.textColor = UIColor.cassette(.textPrimary)
@@ -997,17 +1028,14 @@ class GenericDetailTableHeader: UIView {
     case .room:
       // Line height 0.92 as in the mock. Unverified on a device: if the caps clip at the
       // top, drop the multiple and use a small baselineOffset instead.
-      titleLabel.attributedText = NSAttributedString.cassette(
-        name,
-        .pageTitle,
-        color: .cassette(.textPrimary),
-        lineHeightMultiple: 0.92
-      )
-      titleLabel.numberOfLines = 3
+      roomName = name
       titleLabel.adjustsFontSizeToFitWidth = false
       titleLabel.accessibilityLabel = name
       titleLabel.layer.shadowOpacity = 0
+      fitRoomTitle(width: lastRoomWidth)
     case .artistPhoto, .artistFan, .artistCircle:
+      roomName = nil
+      titleRoomHeight?.isActive = false
       titleLabel.attributedText = NSAttributedString.cassette(
         name,
         .heroName,
@@ -1026,6 +1054,43 @@ class GenericDetailTableHeader: UIView {
     }
   }
 
+  /// The width the lit head's name was last fitted to.
+  private var lastRoomWidth: CGFloat = 0
+
+  /// R2-head.long-name: the name in its page-title voice, sat on the foot of a three-line room;
+  /// a name that needs more steps down to the section heading's voice (the shout) and, past
+  /// that, is cut with an ellipsis on its last line, whole for VoiceOver. Never cut silently.
+  private func fitRoomTitle(width: CGFloat) {
+    guard let name = roomName, width > 0 else { return }
+    lastRoomWidth = width
+    let ink = UIColor.cassette(.textPrimary)
+    func set(_ style: CassetteTextStyle, _ text: String) -> NSAttributedString {
+      NSAttributedString.cassette(text, style, color: ink, lineHeightMultiple: 0.92)
+    }
+    func height(_ text: NSAttributedString) -> CGFloat {
+      ceil(text.boundingRect(
+        with: CGSize(width: width, height: .greatestFiniteMagnitude),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        context: nil
+      ).height)
+    }
+    let room = height(set(.pageTitle, "A\nA\nA"))
+    let whole = set(.pageTitle, name)
+    if height(whole) <= room + 1 {
+      titleLabel.attributedText = whole
+      titleLabel.numberOfLines = 3
+    } else {
+      let line = height(set(.shout, "A"))
+      titleLabel.attributedText = set(.shout, name)
+      titleLabel.numberOfLines = max(1, Int(room / line))
+    }
+    // after the text: the label's own mode then rules the last line (an attributed string's
+    // paragraph style would otherwise wrap it away silently)
+    titleLabel.lineBreakMode = .byTruncatingTail
+    titleRoomHeight?.constant = room
+    titleRoomHeight?.isActive = true
+  }
+
   /// The lit styles' rhythm: title to line 6, line to meta 10 (meta 10 under the title
   /// when there is no line), meta to the pills 18. The artist name sits 8 over its meta.
   private func applyLitSpacing(layout: HeroLayout, hasMeta: Bool) {
@@ -1038,7 +1103,7 @@ class GenericDetailTableHeader: UIView {
     } else {
       afterTitle = hasMeta ? Room.titleToMetaAlone : Room.metaToActions
     }
-    contentColumn.setCustomSpacing(afterTitle, after: titleLabel)
+    contentColumn.setCustomSpacing(afterTitle, after: titleRoom)
     contentColumn.setCustomSpacing(hasMeta ? Room.lineToMeta : Room.metaToActions, after: answerLabel)
     contentColumn.setCustomSpacing(Room.metaToActions, after: infoLabel)
   }
