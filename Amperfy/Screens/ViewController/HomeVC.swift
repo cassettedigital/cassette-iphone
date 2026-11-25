@@ -350,8 +350,13 @@ final class HomeVC: UICollectionViewController {
     // change, so the two tabs' titles still match.
     navigationItem.largeTitleDisplayMode = .never
     navigationController?.navigationBar.prefersLargeTitles = false
+    // IOS-13 (design wave 6): Home's bar is the app's one bar, solid on the paper with its
+    // hairline, as Library's, Search's and every pushed page's are; it was see-through, the
+    // only one, so the first card slid under its title.
     let appearance = UINavigationBarAppearance()
-    appearance.configureWithDefaultBackground()
+    appearance.configureWithOpaqueBackground()
+    appearance.backgroundColor = .cassette(.surfaceBase)
+    appearance.shadowColor = .cassette(.hairline)
     appearance.titleTextAttributes = [
       .font: UIFont.cassette(.navTitle),
       .foregroundColor: UIColor.cassette(.textPrimary),
