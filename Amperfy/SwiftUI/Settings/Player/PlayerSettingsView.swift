@@ -119,7 +119,7 @@ struct PlaybackSettingsView: View {
         #endif
       }
     }
-    .navigationTitle(Self.title)
+    .cassetteSettingsTitle(Self.title)
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       appDelegate.userStatistics.visited(.settingsPlayer)
@@ -143,5 +143,35 @@ struct PlaybackSettingsView_Previews: PreviewProvider {
 
   static var previews: some View {
     PlaybackSettingsView().environmentObject(settings)
+  }
+}
+
+// MARK: - DownloadQualityMenu
+
+/// Download quality as a menu in its own row, Lossless or High (IOS-15, design wave 6): it was a
+/// whole page holding one choice. The front of Settings and This phone both draw it; `label`
+/// is the row, and `chosen` hears the new answer ("Lossless", "High").
+struct DownloadQualityMenu<Label: View>: View {
+  let chosen: (String) -> ()
+  @ViewBuilder
+  let label: () -> Label
+
+  var body: some View {
+    Menu {
+      Button("Lossless (FLAC)") { choose(.raw) }
+      Button("High (MP3)") { choose(.mp3) }
+    } label: {
+      label()
+    }
+    .buttonStyle(.plain)
+  }
+
+  @MainActor
+  private func choose(_ pref: CacheTranscodingFormatPreference) {
+    appDelegate.storage.settings.user.cacheTranscodingFormatPreference = pref
+    // Phase 2c: the choice goes up to the hub (the web Devices page), as the old page sent it.
+    let tier = pref == .raw ? "lossless" : "high"
+    Task { try? await CassetteSyncAPI.shared.setDownloadQuality(tier) }
+    chosen(pref == .raw ? "Lossless" : "High")
   }
 }

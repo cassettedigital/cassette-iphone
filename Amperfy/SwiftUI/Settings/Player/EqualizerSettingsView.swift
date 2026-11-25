@@ -167,7 +167,7 @@ struct EqualizerSettingsView: View {
         }, header: "Presets")
       }
     }
-    .navigationTitle("Equalizer")
+    .cassetteSettingsTitle("Equalizer")
     .navigationBarTitleDisplayMode(.inline)
   }
 }

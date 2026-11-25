@@ -134,7 +134,7 @@ struct SwipeSettingsView: View {
           )
         }
     }
-    .navigationTitle("Swipe")
+    .cassetteSettingsTitle("Swipe")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       reload()

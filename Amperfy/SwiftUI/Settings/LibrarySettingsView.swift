@@ -211,7 +211,7 @@ struct StorageSettingsView: View {
         }
       }
     }
-    .navigationTitle("Storage")
+    .cassetteSettingsTitle("Storage")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       updateValues()

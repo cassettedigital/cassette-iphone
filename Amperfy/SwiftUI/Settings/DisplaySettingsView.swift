@@ -56,7 +56,7 @@ struct AppIconSettingsView: View {
         )
       }
     }
-    .navigationTitle("App Icon")
+    .cassetteSettingsTitle("App Icon")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       selectedIconName = UIApplication.shared.alternateIconName

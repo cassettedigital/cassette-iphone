@@ -37,7 +37,7 @@ struct EventLogSettingsView: View {
       }
       .listStyle(.grouped)
     }
-    .navigationTitle("Event Log")
+    .cassetteSettingsTitle("Event log")
   }
 }
 

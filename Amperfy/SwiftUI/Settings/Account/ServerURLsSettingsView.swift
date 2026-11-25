@@ -121,7 +121,7 @@ struct ServerURLsSettingsView: View {
         serverURLs: $serverURLs
       )
     }
-    .navigationTitle("Server URLs")
+    .cassetteSettingsTitle("Server URLs")
     .toolbar {
       ToolbarItemGroup(placement: .navigationBarTrailing) {
         EditButton()

@@ -150,7 +150,7 @@ struct ArtworkSettingsView: View {
         }
       }
     }
-    .navigationTitle("Artwork")
+    .cassetteSettingsTitle("Artwork")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       updateValues()

@@ -34,21 +34,20 @@ struct AdvancedSettingsView: View {
   var body: some View {
     ZStack {
       SettingsList {
-        SettingsSection(
-          content: {
-            NavigationLink(destination: EventLogSettingsView()) {
-              Text("Event Log")
-            }
-            // Cassette — Diagnostics Phase 1: always-on rolling trace + export.
-            NavigationLink(destination: DiagnosticsSettingsView()) {
-              Text("Diagnostics")
-            }
-          },
-          footer: "A running log of sync and playback events, useful when reporting a problem."
-        )
+        // Design wave 6: the Settings twin's rows; no footer, the phones carry no
+        // explanations (W8).
+        SettingsSection {
+          SettingLink("Event log") {
+            EventLogSettingsView()
+          }
+          // Cassette — Diagnostics Phase 1: always-on rolling trace + export.
+          SettingLink("Diagnostics") {
+            DiagnosticsSettingsView()
+          }
+        }
       }
     }
-    .navigationTitle("Advanced")
+    .cassetteSettingsTitle("Advanced")
     .navigationBarTitleDisplayMode(.inline)
   }
 }

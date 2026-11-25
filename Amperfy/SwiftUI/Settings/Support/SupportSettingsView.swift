@@ -53,44 +53,54 @@ struct SupportSettingsView: View {
       !feedbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
+  /// The line that comes and goes, under the key (E-coming-line): the website's own words.
+  private var stateLine: String? {
+    switch sendState {
+    case .idle, .sending: nil
+    case .succeeded: "Sent. Thank you."
+    case .failed: "That didn't send. Try again."
+    }
+  }
+
+  // Design wave 6: the website's note box on the phone (the founder trimmed it there on
+  // 11-20: the title, the placeholder, the screenshot, the key). No footer explaining where it
+  // goes, no label over the field; Send is a key, not a list row.
   var body: some View {
     SettingsList {
-      SettingsSection(
-        content: {
-          // Multi-line free text. `.vertical` axis lets the field grow with the
-          // message; the placeholder doubles as the prompt.
-          TextField(
-            "Describe the problem, or share any feedback…",
-            text: $feedbackText,
-            axis: .vertical
-          )
+      SettingsSection {
+        // Multi-line free text that grows with the message; the placeholder is the prompt.
+        TextField("A bug, a gripe or an idea", text: $feedbackText, axis: .vertical)
           .lineLimit(4 ... 10)
           .disabled(sendState == .sending)
 
-          Toggle("Include a screenshot of the app", isOn: $includeScreenshot)
-            .disabled(sendState == .sending)
+        Toggle(isOn: $includeScreenshot) {
+          Text("Add a screenshot")
+            .font(.cassette(.rowTitle))
+            .foregroundStyle(Color.cassette(.textPrimary))
+        }
+        .disabled(sendState == .sending)
+      }
 
-          Button {
+      Section {
+        VStack(alignment: .leading, spacing: 12) {
+          Button(sendState == .sending ? "Sending" : "Send") {
             send()
-          } label: {
-            switch sendState {
-            case .idle:
-              Label("Send to Cassette", systemImage: "paperplane")
-            case .sending:
-              Label("Sending…", systemImage: "paperplane")
-            case .succeeded:
-              Label("Sent. Thank you", systemImage: "checkmark.circle")
-            case .failed:
-              Label("Couldn't send, tap to retry", systemImage: "exclamationmark.circle")
-            }
           }
+          .buttonStyle(CassetteKeyStyle(.fill))
           .disabled(!canSend)
-        },
-        footer: "Sends your message straight to Cassette. A screenshot, if included, helps us see what you saw. No Mail account needed."
-      )
-      // cassette §G: Event Log moved to the Advanced screen.
+          // the line's room is held so the key never moves when it comes and goes
+          Text(stateLine ?? " ")
+            .font(.cassette(.caption))
+            .foregroundStyle(
+              sendState == .failed ? Color(uiColor: CoverTint.dangerText) : Color.cassette(.textSecondary)
+            )
+            .accessibilityHidden(stateLine == nil)
+        }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 0, trailing: 4))
+      }
     }
-    .navigationTitle("Report a problem")
+    .cassetteSettingsTitle("Send me a note")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       appDelegate.userStatistics.visited(.settingsSupport)

@@ -98,7 +98,7 @@ struct SettingsView: View {
       ZStack {
         list
       }
-      .navigationTitle("General")
+      .cassetteSettingsTitle("General")
       .navigationBarTitleDisplayMode(.inline)
     #else
       // cassette: NavigationStack (iOS 16+) replaces the deprecated NavigationView.
@@ -107,7 +107,7 @@ struct SettingsView: View {
       // on push into a sub-menu; NavigationStack adopts the Liquid Glass bar cleanly.
       NavigationStack {
         list
-          .navigationTitle("Settings")
+          .cassetteSettingsTitle("Settings")
           // cassette: use the INLINE title on the Settings root. The large-title
           // (scroll-edge) state renders the global opaque nav-bar appearance
           // (CassetteTheme.applyGlobalAppearance → configureWithOpaqueBackground)
@@ -198,9 +198,9 @@ struct SettingsView: View {
           if !devices.stripAlbums.isEmpty {
             StripRow(albums: devices.stripAlbums)
           }
-          RootRowLabel(title: "Music", value: DeviceFormat.size(phone.bytes), chevron: false)
+          SettingRowLabel(title: "Music", value: DeviceFormat.size(phone.bytes), trailing: .none)
         }
-        RootLink("Albums on this \(UIDevice.cassetteDeviceWord)") {
+        SettingLink("Albums on this \(UIDevice.cassetteDeviceWord)") {
           ThisPhoneView(model: devices)
         }
       } header: {
@@ -208,10 +208,10 @@ struct SettingsView: View {
       }
 
       Section {
-        RootLink("Download quality", value: downloadQuality) {
-          PlaybackSettingsView()
+        DownloadQualityMenu(chosen: { downloadQuality = $0 }) {
+          SettingRowLabel(title: "Download quality", value: downloadQuality, trailing: .chooses)
         }
-        RootLink("Equalizer", value: equalizerValue) {
+        SettingLink("Equalizer", value: equalizerValue) {
           EqualizerSettingsView()
         }
         // Light or dark, this phone only (the founder, 2026-10-29: Auto by default, with Light
@@ -223,28 +223,28 @@ struct SettingsView: View {
             Text("Dark").tag(UIUserInterfaceStyle.dark)
           }
         } label: {
-          RootRowLabel(title: "Appearance", value: appearanceValue)
+          SettingRowLabel(title: "Appearance", value: appearanceValue, trailing: .chooses)
         }
         .buttonStyle(.plain)
       }
 
       Section {
         // The iPhone's help article, drawn by the site inside the app (I-S6).
-        RootLink("Help") {
+        SettingLink("Help") {
           CassetteWebPage(path: "/help/your-iphone", title: "Help")
             .ignoresSafeArea(edges: .bottom)
         }
-        RootLink(NavigationTarget.support.displayName) {
+        SettingLink(NavigationTarget.support.displayName) {
           SupportSettingsView()
         }
-        RootLink(NavigationTarget.about.displayName, value: AppDelegate.version) {
+        SettingLink(NavigationTarget.about.displayName, value: AppDelegate.version) {
           AboutSettingsView()
         }
-        RootLink(NavigationTarget.advanced.displayName) {
+        SettingLink(NavigationTarget.advanced.displayName) {
           AdvancedSettingsView()
         }
         #if DEBUG
-          RootLink(NavigationTarget.developer.displayName) {
+          SettingLink(NavigationTarget.developer.displayName) {
             DeveloperView()
           }
         #endif
@@ -262,90 +262,7 @@ struct SettingsView: View {
 
 #if !targetEnvironment(macCatalyst)
 
-  // MARK: - SettingsHead
-
-  /// A two-voice section head on the root: the shout in ink, the answer in ink2 (orange is
-  /// for Home row answers and live state only). One line, 20pt from the screen edge.
-  private struct SettingsHead: View {
-    let shout: String
-    let answer: String?
-
-    var body: some View {
-      CassetteHeadingText(
-        shout: shout,
-        answer: answer,
-        answerColor: Color.cassette(.textSecondary)
-      )
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.top, 16)
-      .padding(.bottom, 10)
-      .padding(.leading, 4)
-      .listRowInsets(EdgeInsets())
-      .textCase(nil)
-    }
-  }
-
-  // MARK: - Root rows
-
-  /// The root's chevron: the registry glyph in ink3.
-  private struct RootChevron: View {
-    var body: some View {
-      Image(uiImage: CassetteIcon.chevronRight.uiImage(size: .row, weight: .semibold))
-        .renderingMode(.template)
-        .foregroundStyle(Color.cassette(.textTertiary))
-        .accessibilityHidden(true)
-    }
-  }
-
-  /// A root row: the label in Barlow, the value in DM Mono ink2, then the chevron.
-  private struct RootRowLabel: View {
-    let title: String
-    var value: String? = nil
-    var chevron = true
-
-    var body: some View {
-      HStack(spacing: 12) {
-        Text(title)
-          .font(.cassette(.rowTitle))
-          .foregroundStyle(Color.cassette(.textPrimary))
-          .lineLimit(1)
-        Spacer(minLength: 8)
-        if let value, !value.isEmpty {
-          Text(value)
-            .font(.cassette(.caption))
-            .foregroundStyle(Color.cassette(.textSecondary))
-            .lineLimit(1)
-        }
-        if chevron {
-          RootChevron()
-        }
-      }
-      .frame(maxWidth: .infinity, minHeight: 50)
-      .contentShape(Rectangle())
-    }
-  }
-
-  /// A root row that pushes `destination`, with the root's own chevron (the system one is
-  /// hidden with the link).
-  private struct RootLink<Destination: View>: View {
-    let title: String
-    let value: String?
-    let destination: () -> Destination
-
-    init(_ title: String, value: String? = nil, @ViewBuilder destination: @escaping () -> Destination) {
-      self.title = title
-      self.value = value
-      self.destination = destination
-    }
-
-    var body: some View {
-      ZStack {
-        NavigationLink(destination: destination) { EmptyView() }
-          .opacity(0)
-        RootRowLabel(title: title, value: value)
-      }
-    }
-  }
+  // SettingsHead, the rows and their marks are the shared Settings twin (SettingRow.swift).
 
   // MARK: - AccountCardRow
 
@@ -384,7 +301,7 @@ struct SettingsView: View {
               .lineLimit(1)
           }
           Spacer(minLength: 8)
-          RootChevron()
+          SettingRowMark(trailing: .opens)
         }
         .contentShape(Rectangle())
       }
@@ -472,7 +389,7 @@ struct SettingsView: View {
           }
           .padding(.vertical, 10)
           Spacer(minLength: 8)
-          RootChevron()
+          SettingRowMark(trailing: .opens)
         }
         .contentShape(Rectangle())
       }
@@ -491,7 +408,7 @@ struct SettingsView: View {
         Task { await model.resync() }
       } label: {
         HStack(spacing: 12) {
-          Text("Resync Library")
+          Text("Resync library")
             .font(.cassette(.rowTitle))
             .foregroundStyle(Color.cassette(.textPrimary))
           Spacer(minLength: 8)

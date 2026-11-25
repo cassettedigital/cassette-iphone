@@ -66,7 +66,7 @@ struct ArtworkDownloadSettingsView: View {
         }
       }
     }
-    .navigationTitle("Artwork Download")
+    .cassetteSettingsTitle("Artwork Download")
     .onAppear {
       updateValues()
     }

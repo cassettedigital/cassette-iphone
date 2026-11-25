@@ -53,6 +53,27 @@ import SwiftUI
 
     private var hubName: String { model.hubName ?? CassetteSyncStatus.fallbackHubName }
 
+    /// The page's title: the computer's own name; with no name, its state in the title's voice
+    /// (as Home's computer card says it), never "Your computer" twice under the kicker.
+    private var title: String {
+      if let name = model.hubName { return name }
+      return model.macState.answer.map { $0.prefix(1).uppercased() + $0.dropFirst() } ?? hubName
+    }
+
+    /// The state's italic line, only under a computer's own name (the title already says it).
+    private var stateLine: String? {
+      model.hubName == nil ? nil : model.macState.answer
+    }
+
+    /// An answer's colour: the lead record's when a cover lights the page, else the kit's orange
+    /// (R-orange-accent: the phones' quiet tan answers on tool screens go orange).
+    private var answerColor: Color {
+      leadTint == nil ? Color.cassette(.accentAnswer) : tint.textColor
+    }
+
+    @Environment(\.colorScheme)
+    private var colorScheme
+
     var body: some View {
       ScrollView {
         ZStack(alignment: .top) {
@@ -133,19 +154,20 @@ import SwiftUI
           }
           .foregroundStyle(Color.cassette(.textSecondary))
           .padding(.bottom, 8)
-          Text(hubName)
+          Text(title)
             .cassetteText(.heroName)
             .foregroundStyle(Color.cassette(.textPrimary))
             .lineLimit(2)
             .minimumScaleFactor(0.7)
-            .shadow(color: Color.black.opacity(0.5), radius: 9, x: 0, y: 2)
+            // the name's lift off the covers' glow is a dark paper's; on light paper it smudged
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.5 : 0), radius: 9, x: 0, y: 2)
             .padding(.bottom, 8)
             .accessibilityAddTraits(.isHeader)
           // No word until the Mac's heartbeat has been read: never a guessed "in sync".
-          if let answer = model.macState.answer {
+          if let answer = stateLine {
             Text(answer)
               .cassetteText(.answer)
-              .foregroundStyle(tint.textColor)
+              .foregroundStyle(answerColor)
               .padding(.top, 6)
               .padding(.bottom, 10)
           }
@@ -213,7 +235,7 @@ import SwiftUI
     private var shelf: some View {
       if !model.newOnMac.isEmpty {
         VStack(alignment: .leading, spacing: 0) {
-          CassetteHeadingText(shout: "NEW IN YOUR LIBRARY", answer: "lately", answerColor: tint.textColor)
+          CassetteHeadingText(shout: "NEW IN YOUR LIBRARY", answer: "lately", answerColor: answerColor)
             .padding(.horizontal, CassetteHeading.sideInset)
             .padding(.bottom, CassetteHeading.bottomSpacing)
           ScrollView(.horizontal, showsIndicators: false) {
@@ -317,36 +339,20 @@ import SwiftUI
   }
 
   /// A read-only row in a device card: label in Barlow, value in DM Mono ink2.
+  /// A fact on a device card: the Settings twin's row inside the card's own side room.
   struct DeviceValueRow: View {
     let title: String
     let value: String
-    var chevron = false
+    var trailing: SettingRowTrailing = .none
 
     var body: some View {
-      HStack(spacing: 12) {
-        Text(title)
-          .font(.cassette(.rowTitle))
-          .foregroundStyle(Color.cassette(.textPrimary))
-          .lineLimit(1)
-        Spacer(minLength: 8)
-        Text(value)
-          .font(.cassette(.caption))
-          .foregroundStyle(Color.cassette(.textSecondary))
-          .lineLimit(1)
-        if chevron {
-          Image(uiImage: CassetteIcon.chevronRight.uiImage(size: .row, weight: .semibold))
-            .renderingMode(.template)
-            .foregroundStyle(Color.cassette(.textTertiary))
-            .accessibilityHidden(true)
-        }
-      }
-      .padding(.leading, 16)
-      .padding(.trailing, 14)
-      .frame(maxWidth: .infinity, minHeight: 50)
-      .contentShape(Rectangle())
-      .accessibilityElement(children: .combine)
+      SettingRowLabel(title: title, value: value, trailing: trailing)
+        .padding(.leading, 16)
+        .padding(.trailing, 14)
+        .accessibilityElement(children: .combine)
     }
   }
+
 
   /// Resync Library inside a device card.
   struct DeviceResyncRow: View {

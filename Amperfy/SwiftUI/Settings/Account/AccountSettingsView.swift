@@ -105,26 +105,17 @@ struct AccountSettingsView: View {
           // instead: name, then email — the same identity the account menu already
           // leads with (CassetteSyncAPI, sourced from /api/sync/account). Falls back
           // to "Connected" before the first sync lands, and never surfaces the token.
+          // Design wave 6: the account's facts as setting rows (the Settings twin), each a name
+          // and its answer; the page's title already says Account, so no row repeats it.
           SettingsSection {
-            SettingsRow(
-              title: "Account",
-              orientation: .vertical,
-              splitPercentage: splitPercentage
-            ) {
-              SecondaryText(
-                CassetteSyncAPI.accountName ?? CassetteSyncAPI
-                  .accountEmail ?? "Connected"
-              )
+            if let name = CassetteSyncAPI.accountName {
+              SettingRowLabel(title: "Name", value: name, trailing: .none)
             }
-            if CassetteSyncAPI.accountName != nil,
-               let email = CassetteSyncAPI.accountEmail {
-              SettingsRow(
-                title: "Email",
-                orientation: .vertical,
-                splitPercentage: splitPercentage
-              ) {
-                SecondaryText(email)
-              }
+            if let email = CassetteSyncAPI.accountEmail {
+              SettingRowLabel(title: "Email", value: email, trailing: .none)
+            }
+            if CassetteSyncAPI.accountName == nil, CassetteSyncAPI.accountEmail == nil {
+              SettingRowLabel(title: "Cassette", value: "Connected", trailing: .none)
             }
           }
 
@@ -135,15 +126,15 @@ struct AccountSettingsView: View {
           if !isCassetteAccount(activeAccountInfo) || Self.keepsResyncForCassette {
             SettingsSection {
               if !isCassetteAccount(activeAccountInfo) {
-                SettingsButtonRow(title: "Update Password") {
+                SettingAction(title: "Update password") {
                   withPopupAnimation { isPwUpdateDialogVisible = true }
                 }
               }
-              SettingsButtonRow(title: "Resync Library") {
+              SettingAction(title: "Resync library") {
                 isShowResyncLibraryAlert = true
               }.alert(isPresented: $isShowResyncLibraryAlert) {
                 Alert(
-                  title: Text("Resync Library"),
+                  title: Text("Resync library"),
                   message: Text(
                     "This reads your library again from your computer. The music on this \(UIDevice.cassetteDeviceWord) stays.\n\nResync now?"
                   ),
@@ -157,7 +148,7 @@ struct AccountSettingsView: View {
           }
 
           SettingsSection {
-            SettingsButtonRow(title: "Sign Out", actionType: .destructive) {
+            SettingAction(title: "Sign out", tone: .destructive) {
               appDelegate.presentLogoutChoice(for: activeAccountInfo)
             }
           }
@@ -171,9 +162,7 @@ struct AccountSettingsView: View {
                 CassetteWebPage(path: "/settings", title: "Account")
                   .ignoresSafeArea(edges: .bottom)
               } label: {
-                Text("Delete Account")
-                  .font(.cassette(.rowTitle))
-                  .foregroundStyle(Color(uiColor: CoverTint.dangerText))
+                SettingRowLabel(title: "Delete account", trailing: .none, tone: .destructive)
               }
             }
           }
@@ -185,7 +174,7 @@ struct AccountSettingsView: View {
         }
       }
     }
-    .navigationTitle("Account")
+    .cassetteSettingsTitle("Account")
     .navigationBarTitleDisplayMode(.inline)
     .sheet(isPresented: $isPwUpdateDialogVisible) {
       UpdatePasswordView(isVisible: $isPwUpdateDialogVisible)

@@ -546,6 +546,7 @@
 		50FF311B2BBC4D8000C2C3B9 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50FF311A2BBC4D8000C2C3B9 /* NetworkMonitor.swift */; };
 		54B093A83670B9A232FA0202 /* MoodDoorsHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 256157FBDC1FDF2EAF577851 /* MoodDoorsHeaderView.swift */; };
 		631C166B2C6D3D9A0085F62E /* SettingsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631C166A2C6D3D9A0085F62E /* SettingsRow.swift */; };
+		CA55E6A6000000520000CAFE /* SettingRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55E6A6000000020000CAFE /* SettingRow.swift */; };
 		631C166D2C6D61110085F62E /* NavigationTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631C166C2C6D61110085F62E /* NavigationTarget.swift */; };
 		631C166F2C6D63510085F62E /* SettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 631C166E2C6D63510085F62E /* SettingsSection.swift */; };
 		632F51242C83A7970032860D /* QueueVC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 632F51232C83A7970032860D /* QueueVC.swift */; };
@@ -1247,6 +1248,7 @@
 		50FF31192BBB27AC00C2C3B9 /* Amperfy v36.xcdatamodel */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcdatamodel; path = "Amperfy v36.xcdatamodel"; sourceTree = "<group>"; };
 		50FF311A2BBC4D8000C2C3B9 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		631C166A2C6D3D9A0085F62E /* SettingsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRow.swift; sourceTree = "<group>"; };
+		CA55E6A6000000020000CAFE /* SettingRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingRow.swift; sourceTree = "<group>"; };
 		631C166C2C6D61110085F62E /* NavigationTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationTarget.swift; sourceTree = "<group>"; };
 		631C166E2C6D63510085F62E /* SettingsSection.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SettingsSection.swift; sourceTree = "<group>"; };
 		632F51232C83A7970032860D /* QueueVC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueVC.swift; sourceTree = "<group>"; };
@@ -1588,6 +1590,7 @@
 				638920EF2C8C8E9000932EE8 /* SettingsList.swift */,
 				631C166E2C6D63510085F62E /* SettingsSection.swift */,
 				631C166A2C6D3D9A0085F62E /* SettingsRow.swift */,
+				CA55E6A6000000020000CAFE /* SettingRow.swift */,
 				504B442128D8EBB20033982C /* MailView.swift */,
 				50AC4E5528D99A410091FF33 /* ButtonStyles.swift */,
 				5005939828E5C5E5008C8DF6 /* MultiPickerView.swift */,
@@ -2746,6 +2749,7 @@
 				50B137002EFC36D500738475 /* ShuffleTypeAppEnum.swift in Sources */,
 				504B441D28D7A6330033982C /* XCallbackURLsSetttingsView.swift in Sources */,
 				631C166B2C6D3D9A0085F62E /* SettingsRow.swift in Sources */,
+				CA55E6A6000000520000CAFE /* SettingRow.swift in Sources */,
 				507361E02632BA3B005F151D /* GenresVC.swift in Sources */,
 				50C1715A2D107E7600C0C53A /* PlaylistAddDirectoriesVC.swift in Sources */,
 				50E59A4B2ED747F000F2B65C /* HomeEditorVC.swift in Sources */,

@@ -148,7 +148,7 @@ struct DiagnosticsSettingsView: View {
       }
       .listStyle(.grouped)
     }
-    .navigationTitle("Diagnostics")
+    .cassetteSettingsTitle("Diagnostics")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       refresh()

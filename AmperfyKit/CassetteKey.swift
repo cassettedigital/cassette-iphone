@@ -14,6 +14,7 @@
 //  for their glyph in the order the caller names, and a key that holds never does.
 //
 
+import SwiftUI
 import UIKit
 
 // MARK: - CassetteKeyLook
@@ -248,5 +249,61 @@ public final class CassetteKeyRow: UIView {
     let visible = keys.filter { !$0.isHidden }
     let widths = visible.map { $0.isGlyphOnly ? $0.keyHeight : $0.intrinsicContentSize.width }
     return widths.reduce(0, +) + CGFloat(max(0, visible.count - 1)) * stack.spacing
+  }
+}
+
+// MARK: - CassetteKeyStyle
+
+/// The same key in SwiftUI, as a button style: `Button("Send") { … }.buttonStyle(CassetteKeyStyle(.fill))`.
+/// Every number is the kit's, as for `CassetteKey`.
+public struct CassetteKeyStyle: ButtonStyle {
+  let look: CassetteKeyLook
+  let height: CGFloat
+
+  public init(_ look: CassetteKeyLook, height: CGFloat = CassetteKitTokens.Control.action) {
+    self.look = look
+    self.height = height
+  }
+
+  public func makeBody(configuration: Configuration) -> some View {
+    KeyBody(look: look, height: height, configuration: configuration)
+  }
+
+  private struct KeyBody: View {
+    let look: CassetteKeyLook
+    let height: CGFloat
+    let configuration: ButtonStyleConfiguration
+    @Environment(\.isEnabled)
+    private var isEnabled
+
+    private var ink: Color {
+      look == .fill ? Color.cassette(.textOnFill) : Color.cassette(.textPrimary)
+    }
+
+    var body: some View {
+      configuration.label
+        .font(.cassette(.pill))
+        .tracking(CassetteTextStyle.pill.kern)
+        .textCase(.uppercase)
+        .lineLimit(1)
+        .foregroundStyle(ink)
+        .padding(.horizontal, CassetteKitTokens.Control.keyPad)
+        .frame(height: height)
+        .background {
+          switch look {
+          case .fill:
+            Capsule().fill(Color.cassette(.fillSelected))
+          case .line:
+            Capsule().strokeBorder(
+              Color.cassette(.textPrimary).opacity(CassetteKitTokens.Component.Pill.strokeAlpha),
+              lineWidth: CassetteKitTokens.Component.Pill.stroke
+            )
+          case .word:
+            Color.clear
+          }
+        }
+        .contentShape(Capsule())
+        .opacity(isEnabled ? (configuration.isPressed ? 0.75 : 1) : CassetteOpacity.disabled)
+    }
   }
 }

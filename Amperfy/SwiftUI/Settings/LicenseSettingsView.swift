@@ -1618,7 +1618,7 @@ struct AboutSettingsView: View {
       .toolbarBackground(Color.cassette(.surfaceSunken), for: .navigationBar)
       .toolbarBackground(.visible, for: .navigationBar)
     }
-    .navigationTitle("About")
+    .cassetteSettingsTitle("About")
     .navigationBarTitleDisplayMode(.inline)
   }
 }
@@ -1647,7 +1647,7 @@ struct LicenseDetailView: View {
     }
     .scrollContentBackground(.hidden)
     .background(CassetteTheme.Colors.bg)
-    .navigationTitle(name)
+    .cassetteSettingsTitle(name)
     .navigationBarTitleDisplayMode(.inline)
   }
 }

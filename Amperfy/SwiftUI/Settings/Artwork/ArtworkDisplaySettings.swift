@@ -66,7 +66,7 @@ struct ArtworkDisplaySettings: View {
         }
       }
     }
-    .navigationTitle("Artwork Display")
+    .cassetteSettingsTitle("Artwork Display")
     .onAppear {
       updateValues()
     }

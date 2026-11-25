@@ -180,12 +180,10 @@ import SwiftUI
 
     // MARK: Quality card
 
-    /// Download quality, the card's first row: pushes the same screen as Settings' row.
+    /// Download quality, the card's first row: the same menu as Settings' row.
     private var qualityRow: some View {
-      ZStack {
-        NavigationLink(destination: PlaybackSettingsView()) { EmptyView() }
-          .opacity(0)
-        DeviceValueRow(title: "Download quality", value: downloadQuality, chevron: true)
+      DownloadQualityMenu(chosen: { downloadQuality = $0 }) {
+        DeviceValueRow(title: "Download quality", value: downloadQuality, trailing: .chooses)
       }
       .background(
         UnevenRoundedRectangle(

@@ -97,7 +97,7 @@ struct DeveloperView: View {
         })
       }
     }
-    .navigationTitle("Developer")
+    .cassetteSettingsTitle("Developer")
     .navigationBarTitleDisplayMode(.inline)
   }
 }
