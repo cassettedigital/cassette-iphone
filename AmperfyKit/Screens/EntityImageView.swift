@@ -310,6 +310,23 @@ open class EntityImageView: UIView {
     case .circle:
       layer.cornerRadius = min(bounds.width, bounds.height) / 2.0
     }
+    applyRing()
+  }
+
+  /// The kit's tile ring (tokens.json `component.tile.ring`): a hairline of the paper's ink at 8%
+  /// round every picture, so a near-black cover keeps its edge on the dark paper and a cream one
+  /// on the light (IOS-17, design wave 6). Resolved for the appearance it is drawn in.
+  private func applyRing() {
+    let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 3
+    layer.borderWidth = 1 / scale
+    layer.borderColor = UIColor.cassette(.textPrimary)
+      .withAlphaComponent(CassetteKitTokens.Component.Tile.ring)
+      .resolvedColor(with: traitCollection).cgColor
+  }
+
+  override open func traitCollectionDidChange(_ previous: UITraitCollection?) {
+    super.traitCollectionDidChange(previous)
+    applyRing()
   }
 
   private func display(
