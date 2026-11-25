@@ -50,6 +50,8 @@ public enum CassetteIcon: CaseIterable, Sendable {
   case search, plus, plusCircle, minus, check, info, more, filter, sort, list, settings
   case refresh, trash, chevronDown, chevronRight, openExternal, signOut, sortByName
   case adjust, sparkles, download, cancelDownload, lyrics, waveform
+  // Keeping a station: the kit's bookmark, its outline, then filled once kept (never a check)
+  case bookmark, bookmarkFilled
   // Transport (always symbols)
   case play, pause, stop, next, previous, shuffle, repeatAll, repeatOne, repeatOff
   // Keep playing: the queue carries on when it runs out (Apple Music's Autoplay glyph)
@@ -67,7 +69,10 @@ public enum CassetteIcon: CaseIterable, Sendable {
     case .song: return "cassette-lucide-songs"
     case .playlist: return "cassette-lucide-playlists"
     case .genre: return "cassette-lucide-genres"
-    case .radio: return "cassette-lucide-radio"
+    // the website's transistor, drawn by the kit (D18; the founder, 2026-11-22)
+    case .radio: return "cassette-house-radio"
+    case .bookmark: return "cassette-house-bookmark"
+    case .bookmarkFilled: return "cassette-house-bookmark-filled"
     case .search: return "cassette-lucide-search"
     case .plus: return "cassette-lucide-plus"
     case .plusCircle: return "cassette-lucide-circle-plus"
@@ -104,6 +109,8 @@ public enum CassetteIcon: CaseIterable, Sendable {
     case .plusCircle: return "plus.circle"
     case .minus: return "minus"
     case .check: return "checkmark"
+    case .bookmark: return "bookmark"
+    case .bookmarkFilled: return "bookmark.fill"
     case .info: return "info.circle"
     case .more: return "ellipsis"
     case .filter: return "line.3.horizontal.decrease"

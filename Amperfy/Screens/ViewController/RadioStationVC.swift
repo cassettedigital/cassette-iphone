@@ -108,7 +108,12 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
   private let nameLabel = UILabel()
   private let kickerLabel = UILabel()
   private let playPill = LibraryElementDetailTableHeaderView.makePlayPill()
-  private let savePill = UIButton(configuration: .plain())
+  private let savePill = CassetteKey.make(
+    .line,
+    words: "Save",
+    icon: .bookmark,
+    height: LibraryElementDetailTableHeaderView.pillHeight
+  )
 
   private let onAirBlock = UIStackView()
   private let similarBlock = UIStackView()
@@ -378,24 +383,18 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       }
     }, for: .primaryActionTriggered)
     playPill.isEnabled = radio != nil
-    savePill.configuration?.background.backgroundColor = .clear
-    savePill.configuration?.background.strokeColor = UIColor.cassette(.textPrimary).withAlphaComponent(0.35)
-    savePill.configuration?.background.strokeWidth = 1.5
-    savePill.configuration?.cornerStyle = .capsule
-    savePill.configuration?.baseForegroundColor = UIColor.cassette(.textPrimary)
-    savePill.configuration?.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 16)
-    savePill.configuration?.imagePlacement = .leading
-    savePill.configuration?.imagePadding = 8
+    LibraryElementDetailTableHeaderView.setPlayPill(playPill, state: .tuneIn)
     savePill.addAction(UIAction { [weak self] _ in
       guard let self else { return }
       RadioSaved.shared.toggle(station.slug)
     }, for: .primaryActionTriggered)
     applySaveState()
 
-    let pills = UIStackView(arrangedSubviews: [playPill, savePill])
-    pills.axis = .horizontal
-    pills.spacing = 10
-    pills.distribution = .fillEqually
+    // The website's station row (its RadioTuneInKey and SaveStationKey, design wave 6): each key
+    // at its own width, centred under the centred name; short of room Save gives up its word
+    // for its bookmark first, then Tune in for its glyph.
+    let pills = CassetteKeyRow(alignment: .center)
+    pills.setKeys([playPill, savePill], givesWay: [savePill, playPill])
 
     for v in [art, nameLabel, kickerLabel, pills] {
       v.translatesAutoresizingMaskIntoConstraints = false
@@ -416,7 +415,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
       pills.topAnchor.constraint(equalTo: kickerLabel.bottomAnchor, constant: 18),
       pills.leadingAnchor.constraint(equalTo: hero.leadingAnchor, constant: g),
       pills.trailingAnchor.constraint(equalTo: hero.trailingAnchor, constant: -g),
-      pills.heightAnchor.constraint(equalToConstant: 48),
+      pills.heightAnchor.constraint(equalToConstant: LibraryElementDetailTableHeaderView.pillHeight),
       pills.bottomAnchor.constraint(equalTo: hero.bottomAnchor, constant: -8),
     ])
     stack.addArrangedSubview(hero)
@@ -471,7 +470,7 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
   private func playerStateChanged() {
     guard radio != nil else { return }
     let playing = isThisStationPlaying
-    LibraryElementDetailTableHeaderView.setPlayPill(playPill, state: playing ? .stop : .play)
+    LibraryElementDetailTableHeaderView.setPlayPill(playPill, state: playing ? .stop : .tuneIn)
     if wasPlaying, !playing {
       // Stopped: what it heard is the latest word until the cloud has caught up, then read again.
       if let heard = lastHeard { lastHeard = (heard.track, Date()) }
@@ -502,15 +501,11 @@ final class RadioStationVC: UIViewController, UIScrollViewDelegate, MusicPlayabl
   func didRepeatChange() {}
   func didPlaybackRateChange() {}
 
-  /// `+ SAVE` / `✓ SAVED`, the one save mark.
+  /// Save, then Saved: the kit's bookmark, its outline then filled once kept, never a check
+  /// (the founder, 2026-11-19; the website's SaveStationKey).
   private func applySaveState() {
     let saved = RadioSaved.shared.isSaved(station.slug)
-    savePill.configuration?.image = (saved ? CassetteIcon.check : CassetteIcon.plus).symbolImage
-    savePill.configuration?.attributedTitle = AttributedString(NSAttributedString.cassette(
-      saved ? "Saved" : "Save",
-      .pill,
-      color: .cassette(.textPrimary)
-    ))
+    savePill.setWords(saved ? "Saved" : "Save", icon: saved ? .bookmarkFilled : .bookmark)
     savePill.accessibilityLabel = saved ? "Saved. Remove \(station.name) from your stations" : "Save \(station.name)"
   }
 

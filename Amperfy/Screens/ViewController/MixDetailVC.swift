@@ -294,6 +294,8 @@ final class MixHeroView: UIView {
   private let metaLabel = UILabel()
   private let playPill = LibraryElementDetailTableHeaderView.makePlayPill()
   private let shufflePill = LibraryElementDetailTableHeaderView.makeShufflePill()
+  /// The head's keys, the website's row (design wave 6): Shuffle gives up its word first.
+  private let keyRow = CassetteKeyRow(alignment: .leading)
   private var tint: CoverTint = .neutral
 
   init(mix: HomeManager.MadeForYouMix, songs: [AbstractPlayable]) {
@@ -355,10 +357,9 @@ final class MixHeroView: UIView {
 
     playPill.addAction(UIAction { [weak self] _ in self?.onPlay?() }, for: .primaryActionTriggered)
     shufflePill.addAction(UIAction { [weak self] _ in self?.onShuffle?() }, for: .primaryActionTriggered)
-    for pill in [playPill, shufflePill] {
-      pill.translatesAutoresizingMaskIntoConstraints = true
-      addSubview(pill)
-    }
+    keyRow.setKeys([playPill, shufflePill], givesWay: [shufflePill])
+    keyRow.translatesAutoresizingMaskIntoConstraints = true
+    addSubview(keyRow)
   }
 
   @available(*, unavailable)
@@ -408,10 +409,9 @@ final class MixHeroView: UIView {
     y += 10
     place(metaLabel)
     y += 18
-    let pillWidth = (textWidth - 10) / 2
-    playPill.frame = CGRect(x: Self.gutter, y: y, width: pillWidth, height: 48)
-    shufflePill.frame = CGRect(x: Self.gutter + pillWidth + 10, y: y, width: pillWidth, height: 48)
-    y += 48 + 16
+    let keyHeight = LibraryElementDetailTableHeaderView.pillHeight
+    keyRow.frame = CGRect(x: Self.gutter, y: y, width: textWidth, height: keyHeight)
+    y += keyHeight + 16
     let height = ceil(y)
 
     let overscroll: CGFloat = 300

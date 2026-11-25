@@ -65,8 +65,8 @@ class LibraryElementDetailTableHeaderView: UIView {
   static let frameHeight: CGFloat = 40.0 + margin.top + margin.bottom
   /// The disc size `makeDetailPlayCTA` was built around (the Resume card still uses it).
   static let prominentPlayDiameter: CGFloat = 56.0
-  /// phone-taste: the Play and Shuffle pills are 48pt tall (the mock's `.playPill`).
-  static let pillHeight: CGFloat = 48
+  /// A record head's keys: the kit's head step (48, the website's head row; C-play-sizes).
+  static let pillHeight: CGFloat = CassetteKitTokens.Control.head
   /// The compact action bar's height: one row of pills.
   static let prominentBarHeight: CGFloat = pillHeight
   static let prominentFrameHeight: CGFloat = prominentBarHeight + margin.top + margin.bottom
@@ -74,9 +74,14 @@ class LibraryElementDetailTableHeaderView: UIView {
 
   private var config: PlayShuffleInfoConfiguration?
 
-  private var prominentContainer: UIView?
-  private var prominentPlayButton: UIButton?
-  private var prominentShuffleButton: UIButton?
+  private var prominentContainer: CassetteKeyRow?
+  private var prominentPlayButton: CassetteKeyButton?
+  private var prominentShuffleButton: CassetteKeyButton?
+
+  /// Where the head's keys sit: under a left-set name, or centred under a centred one.
+  var keyAlignment: CassetteKeyRow.Alignment = .leading {
+    didSet { prominentContainer?.alignment = keyAlignment }
+  }
 
   required init?(coder aDecoder: NSCoder) {
     super.init(coder: aDecoder)
@@ -339,10 +344,11 @@ class LibraryElementDetailTableHeaderView: UIView {
     button.isHidden = isHidden
   }
 
-  // phone-taste: the compact action bar is two equal 48pt pills, toggled visible only
-  // for compact width in refresh():
-  //   [ > PLAY ] [ SHUFFLE ]
-  // - Play is the cream pill (ink fill, dark label); Shuffle is the outlined ghost pill.
+  // The compact action bar: the website's head row (C-rows-model, design wave 6), each key at
+  // its own width, 12 apart, under the head's words:
+  //   [ > PLAY ]  [ x SHUFFLE ]
+  // - Play is the one primary dark (ink fill); Shuffle is the outlined key, and gives up its
+  //   word for its glyph first when a row runs short. Play holds its word.
   // - Repeat is no longer here; it lives on Now Playing and the queue.
   // - Overflow is a navigation-bar item, wired by the detail view controllers.
   private func setupProminentLayoutIfNeeded() {
@@ -354,12 +360,8 @@ class LibraryElementDetailTableHeaderView: UIView {
     let shuffle = Self.makeShufflePill()
     shuffle.addTarget(self, action: #selector(prominentShufflePressed), for: .touchUpInside)
 
-    let row = UIStackView(arrangedSubviews: [play, shuffle])
-    row.axis = .horizontal
-    row.distribution = .fillEqually
-    row.alignment = .fill
-    row.spacing = 10
-    row.translatesAutoresizingMaskIntoConstraints = false
+    let row = CassetteKeyRow(alignment: keyAlignment)
+    row.setKeys([play, shuffle], givesWay: [shuffle])
     addSubview(row)
     NSLayoutConstraint.activate([
       row.topAnchor.constraint(equalTo: topAnchor),
@@ -373,66 +375,33 @@ class LibraryElementDetailTableHeaderView: UIView {
     prominentShuffleButton = shuffle
   }
 
-  /// A pill label in the `.pill` role (Barlow Bold 16, tracked, capitals).
-  private static func pillTitle(_ text: String, color: UIColor) -> AttributedString {
-    AttributedString(NSAttributedString.cassette(text, .pill, color: color))
-  }
-
-  /// What a PLAY pill says: Play, or (once the player is on that page's music) Pause, or
-  /// Stop for a live station, the way the player's own button reads.
+  /// What a PLAY key says: Play, or (once the player is on that page's music) Pause, or
+  /// Stop for a live station, the way the player's own button reads. A station's idle key
+  /// says Tune in, as the website's does (its RadioTuneInKey).
   enum PlayPillState {
-    case play, pause, stop
+    case play, pause, stop, tuneIn
   }
 
   /// cassette 2026-10-21 (founder: "it has no idea it is playing that thing"): every hero's
-  /// PLAY pill, here and on the made-for-you and station pages, reads the same way.
-  static func setPlayPill(_ pill: UIButton, state: PlayPillState) {
+  /// PLAY key, here and on the made-for-you and station pages, reads the same way.
+  static func setPlayPill(_ pill: CassetteKeyButton, state: PlayPillState) {
     let (icon, label): (CassetteIcon, String) = switch state {
     case .play: (.play, "Play")
     case .pause: (.pause, "Pause")
     case .stop: (.stop, "Stop")
+    case .tuneIn: (.play, "Tune in")
     }
-    pill.configuration?.image = icon.symbolImage
-    pill.configuration?.attributedTitle = pillTitle(label, color: .cassette(.textOnFill))
-    pill.accessibilityLabel = label
+    pill.setWords(label, icon: icon)
   }
 
-  /// The cream PLAY pill (the mock's `.playPill`): ink fill, dark label and glyph, 16pt
-  /// icon with an 8pt gap, fully round ends.
-  static func makePlayPill() -> UIButton {
-    var config = UIButton.Configuration.filled()
-    config.baseBackgroundColor = UIColor.cassette(.fillSelected)
-    config.baseForegroundColor = UIColor.cassette(.textOnFill)
-    config.cornerStyle = .capsule
-    config.image = CassetteIcon.play.symbolImage
-    config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 16)
-    config.imagePlacement = .leading
-    config.imagePadding = 8
-    config.attributedTitle = pillTitle("Play", color: .cassette(.textOnFill))
-    let button = UIButton(configuration: config)
-    button.translatesAutoresizingMaskIntoConstraints = false
-    button.accessibilityLabel = "Play"
-    return button
+  /// The PLAY key: the one primary dark at the record head's height.
+  static func makePlayPill() -> CassetteKeyButton {
+    CassetteKey.make(.fill, words: "Play", icon: .play, height: pillHeight)
   }
 
-  /// The outlined SHUFFLE pill (the mock's `.ghostPill`): clear, a 1.5pt ink ring at 35%,
-  /// ink label and glyph.
-  static func makeShufflePill() -> UIButton {
-    var config = UIButton.Configuration.plain()
-    config.background.backgroundColor = .clear
-    config.background.strokeColor = UIColor.cassette(.textPrimary).withAlphaComponent(0.35)
-    config.background.strokeWidth = 1.5
-    config.cornerStyle = .capsule
-    config.baseForegroundColor = UIColor.cassette(.textPrimary)
-    config.image = CassetteIcon.shuffle.symbolImage
-    config.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 16)
-    config.imagePlacement = .leading
-    config.imagePadding = 8
-    config.attributedTitle = pillTitle("Shuffle", color: .cassette(.textPrimary))
-    let button = UIButton(configuration: config)
-    button.translatesAutoresizingMaskIntoConstraints = false
-    button.accessibilityLabel = "Shuffle"
-    return button
+  /// The SHUFFLE key: the outlined key at the record head's height.
+  static func makeShufflePill() -> CassetteKeyButton {
+    CassetteKey.make(.line, words: "Shuffle", icon: .shuffle, height: pillHeight)
   }
 
   /// cassette redesign (Surface 1): visual style of the prominent detail

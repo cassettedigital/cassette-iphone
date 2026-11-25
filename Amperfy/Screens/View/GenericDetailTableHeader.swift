@@ -965,6 +965,7 @@ class GenericDetailTableHeader: UIView {
     }
     nameTextField.textAlignment = textAlignment
     descriptionLabel.textAlignment = centred ? .center : .natural
+    playShuffleInfoView?.keyAlignment = centred ? .center : .leading
     subtitleButton.contentHorizontalAlignment = centred ? .center : .leading
 
     if isEditing {

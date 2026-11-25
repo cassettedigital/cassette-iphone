@@ -608,6 +608,7 @@
 		CA55F011000000170000CAFE /* CassetteFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55F011000000070000CAFE /* CassetteFont.swift */; };
 		C0FFEE01CA5E77E000000004 /* CassetteTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE01CA5E77E000000003 /* CassetteTokens.swift */; };
 		C0FFEE01CA5E77E000000008 /* CassetteIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FFEE01CA5E77E000000007 /* CassetteIcons.swift */; };
+		CA55E6A6000000510000CAFE /* CassetteKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55E6A6000000010000CAFE /* CassetteKey.swift */; };
 		CA55F012000000170000CAFE /* CassetteTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55F012000000070000CAFE /* CassetteTheme.swift */; };
 		CA55F013000000010000CAFE /* LibraryFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA55F013000000020000CAFE /* LibraryFilter.swift */; };
 		F7EDC5D07EF272F1D43080B5 /* MixtapePreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D4E80DE1B5D5CCA34E33817 /* MixtapePreviewSheet.swift */; };
@@ -1314,6 +1315,7 @@
 		CA55F011000000070000CAFE /* CassetteFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassetteFont.swift; sourceTree = "<group>"; };
 		C0FFEE01CA5E77E000000003 /* CassetteTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassetteTokens.swift; sourceTree = "<group>"; };
 		C0FFEE01CA5E77E000000007 /* CassetteIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassetteIcons.swift; sourceTree = "<group>"; };
+		CA55E6A6000000010000CAFE /* CassetteKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassetteKey.swift; sourceTree = "<group>"; };
 		CA55F012000000070000CAFE /* CassetteTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CassetteTheme.swift; sourceTree = "<group>"; };
 		CA55F013000000020000CAFE /* LibraryFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryFilter.swift; sourceTree = "<group>"; };
 		D3F4AEF3FE005C41818E8BEE /* MoodDoorTile.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MoodDoorTile.swift; sourceTree = "<group>"; };
@@ -2108,6 +2110,7 @@
 				CA55F011000000070000CAFE /* CassetteFont.swift */,
 				C0FFEE01CA5E77E000000003 /* CassetteTokens.swift */,
 				C0FFEE01CA5E77E000000007 /* CassetteIcons.swift */,
+				CA55E6A6000000010000CAFE /* CassetteKey.swift */,
 				CA55F012000000070000CAFE /* CassetteTheme.swift */,
 				CA55E0E1000000F00000CAFE /* Cassette */,
 				50C9D607284FA847007F18D0 /* AmperfyKit.h */,
@@ -3183,6 +3186,7 @@
 				CA55F011000000170000CAFE /* CassetteFont.swift in Sources */,
 				C0FFEE01CA5E77E000000004 /* CassetteTokens.swift in Sources */,
 				C0FFEE01CA5E77E000000008 /* CassetteIcons.swift in Sources */,
+				CA55E6A6000000510000CAFE /* CassetteKey.swift in Sources */,
 				CA55F012000000170000CAFE /* CassetteTheme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
