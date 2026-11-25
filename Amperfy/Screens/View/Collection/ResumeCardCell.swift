@@ -23,7 +23,8 @@ final class ResumeCardCell: BasicCollectionCell {
   /// The mock's `.resume`: 76pt artwork plus 12pt of padding above and below.
   static let cardHeight: CGFloat = artworkSide + 2 * contentPadding
   private static let artworkSide: CGFloat = 76
-  private static let playDiameter: CGFloat = 52
+  /// The play disc ending a wide card: the kit's card step (C-play-sizes, design wave 6).
+  private static let playDiameter: CGFloat = CassetteKitTokens.Control.card
   /// The mock's `.resume` padding and gap.
   private static let contentPadding: CGFloat = 12
   private static let contentGap: CGFloat = 14

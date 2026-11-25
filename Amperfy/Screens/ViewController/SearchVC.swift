@@ -1803,7 +1803,8 @@ final class SearchTopResultCell: UITableViewCell {
   private static let sideInset: CGFloat = 20
   private static let padding: CGFloat = 14
   private static let imageSide: CGFloat = 96
-  private static let discDiameter: CGFloat = 52
+  /// The play disc ending the sure result: the kit's card step (C-play-sizes, design wave 6).
+  private static let discDiameter: CGFloat = CassetteKitTokens.Control.card
   static let rowHeight: CGFloat = topInset + 2 * padding + imageSide
 
   var onPlay: (() -> ())?

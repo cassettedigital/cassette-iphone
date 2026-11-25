@@ -157,7 +157,7 @@ class AlbumCollectionCell: BasicCollectionCell {
   // didSelectItemAt); tap on the play disc fires the closure so the host
   // can start playback for the container.
   /// phone-taste: the mock's `.tilePlay`, a 34pt cream disc (was a 40pt glass button).
-  static let playOverlayDiameter: CGFloat = 34
+  static let playOverlayDiameter: CGFloat = CassetteKitTokens.Control.row
   private var playOverlay: UIButton?
 
   /// cassette Patch 043: HomeVC sets this in its cellProvider so

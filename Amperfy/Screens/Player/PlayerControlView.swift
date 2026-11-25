@@ -33,7 +33,7 @@ class PlayerControlView: UIView {
   // 78pt disc, which overhangs the 50pt transport row, clears the time labels.
   static let frameHeight: CGFloat = 195
   /// phone-taste: the cream play disc (the mock's .npPlay).
-  static private let playDiscDiameter: CGFloat = 78
+  static private let playDiscDiameter: CGFloat = CassetteKitTokens.Control.player
   /// phone-taste: the AirPlay and queue glyphs sit this far in from each edge (the mock's
   /// 26pt sheet padding plus the foot row's own 6pt).
   static private let footRowInset: CGFloat = 32

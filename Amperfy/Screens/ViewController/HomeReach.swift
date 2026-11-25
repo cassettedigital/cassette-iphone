@@ -33,7 +33,8 @@ import UIKit
 /// its artist and the play disc (the sketch's 358pt cover on a 390pt phone). The cover opens
 /// the record; the disc plays it from the top.
 final class DeepDiveCardCell: BasicCollectionCell {
-  private static let playDiameter: CGFloat = 52
+  /// The play disc ending a wide card: the kit's card step (C-play-sizes, design wave 6).
+  private static let playDiameter: CGFloat = CassetteKitTokens.Control.card
   private static let padding: CGFloat = 14
 
   var onPlayTapped: (() -> ())?

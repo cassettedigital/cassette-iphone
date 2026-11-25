@@ -1104,7 +1104,7 @@ final class RadioOnAirCard: UIControl {
   static let side: CGFloat = 112
   private static let badge: CGFloat = 36
   private static let ringWidth: CGFloat = 2
-  private static let disc: CGFloat = 40
+  private static let disc: CGFloat = CassetteKitTokens.Control.card
 
   let station: RadioCatalogStation
   var onOpen: (() -> ())?
