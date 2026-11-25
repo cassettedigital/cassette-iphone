@@ -68,11 +68,11 @@ extension AppDelegate {
       message: "Your playlists and listening history stay in your account. What should happen to the music on this \(UIDevice.cassetteDeviceWord)?",
       preferredStyle: .alert
     )
-    let keep = UIAlertAction(title: "Keep Music on This \(UIDevice.cassetteDeviceWordTitle)", style: .default) { _ in
+    let keep = UIAlertAction(title: "Keep music on this \(UIDevice.cassetteDeviceWord)", style: .default) { _ in
       self.logoutAccount(accountInfo, removeMusic: false)
     }
     alert.addAction(keep)
-    alert.addAction(UIAlertAction(title: "Remove Music from This \(UIDevice.cassetteDeviceWordTitle)", style: .destructive) { _ in
+    alert.addAction(UIAlertAction(title: "Remove music from this \(UIDevice.cassetteDeviceWord)", style: .destructive) { _ in
       self.logoutAccount(accountInfo, removeMusic: true)
     })
     alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))

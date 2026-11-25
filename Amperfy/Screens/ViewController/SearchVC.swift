@@ -797,7 +797,8 @@ class SearchVC: BasicTableViewController {
     return CassetteHeading.makeTableHeaderView(
       shout: section.shout,
       answer: section.answer,
-      answerColor: .cassette(.textSecondary)
+      // R-orange-accent: a heading's italic answer is the kit's orange, never the quiet tan
+      answerColor: .cassette(.accentAnswer)
     )
   }
 
