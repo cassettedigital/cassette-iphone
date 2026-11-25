@@ -28,6 +28,16 @@ public enum CassetteDisplayWeight {
   case bold
   case extraBold
 
+  /// The weight as a number, as the kit's type roles name it.
+  public var kitWeight: Int {
+    switch self {
+    case .regular: 400
+    case .semibold: 600
+    case .bold: 700
+    case .extraBold: 800
+    }
+  }
+
   fileprivate var postScriptName: String {
     switch self {
     case .regular: return "BarlowCondensed-Regular"
@@ -61,6 +71,14 @@ public enum CassetteDisplayWeight {
 public enum CassetteMonoWeight {
   case regular
   case medium
+
+  /// The weight as a number, as the kit's type roles name it.
+  public var kitWeight: Int {
+    switch self {
+    case .regular: 400
+    case .medium: 500
+    }
+  }
 
   fileprivate var postScriptName: String {
     switch self {
@@ -262,62 +280,94 @@ public enum CassetteTextStyle: CaseIterable, Sendable {
 
   /// The single definition of the scale. `UIFont.cassette` and `Font.cassette` both read it,
   /// so the two can no longer drift (they were two copy-pasted switches).
-  fileprivate var spec: (face: CassetteFace, size: CGFloat) {
+  /// The role's numbers in the shared kit (tokens.json `type.roles`, generated into
+  /// CassetteKitTokens.swift): its size, tracking and capitals come from there, never from here
+  /// (design wave 6). The selected tab label shares the tab label's numbers.
+  public var kitRole: CassetteKitTokens.TypeRole {
+    typealias R = CassetteKitTokens.Roles
     switch self {
-    case .heroTitle: return (.display(.bold), 30)
-    case .sectionTitle: return (.display(.bold), 22)
-    case .greeting: return (.display(.semibold), 20)
-    case .rowTitle: return (.display(.semibold), 18)
-    case .miniTitle: return (.display(.semibold), 15)
-    case .sectionLabel: return (.display(.bold), 13)
-    case .cardSubtitle: return (.mono(.regular), 13)
-    case .metadata: return (.mono(.medium), 13)
-    case .caption: return (.mono(.regular), 13)
-    case .body: return (.system, 15)
-    case .navTitle: return (.display(.semibold), 18)
-    case .largeTitle: return (.display(.bold), 34)
-    case .tabLabel: return (.display(.semibold), 10)
-    case .tabLabelSelected: return (.display(.bold), 10)
-    case .shout: return (.display(.extraBold), 26)
-    case .pageTitle: return (.display(.extraBold), 36)
-    case .heroName: return (.display(.extraBold), 46)
-    case .playerTitle: return (.display(.extraBold), 34)
-    case .cardTitle: return (.display(.extraBold), 22)
-    case .tileLabel: return (.display(.bold), 20)
-    case .pill: return (.display(.bold), 16)
-    case .answer: return (.answer, 25)
-    case .answerPlayer: return (.answer, 23)
-    case .answerCompact: return (.answer, 20)
-    case .kicker: return (.mono(.medium), 13)
-    case .meta: return (.mono(.medium), 13)
+    case .heroTitle: return R.heroTitle
+    case .sectionTitle: return R.sectionTitle
+    case .greeting: return R.greeting
+    case .rowTitle: return R.rowTitle
+    case .miniTitle: return R.miniTitle
+    case .sectionLabel: return R.sectionLabel
+    case .cardSubtitle: return R.cardSubtitle
+    case .metadata: return R.metadata
+    case .caption: return R.caption
+    case .body: return R.body
+    case .navTitle: return R.navTitle
+    case .largeTitle: return R.largeTitle
+    case .tabLabel: return R.tabLabel
+    case .tabLabelSelected: return R.tabLabel
+    case .shout: return R.shout
+    case .pageTitle: return R.pageTitle
+    case .heroName: return R.heroName
+    case .playerTitle: return R.playerTitle
+    case .cardTitle: return R.cardTitle
+    case .tileLabel: return R.tileLabel
+    case .pill: return R.pill
+    case .answer: return R.answer
+    case .answerPlayer: return R.answerPlayer
+    case .answerCompact: return R.answerCompact
+    case .kicker: return R.kicker
+    case .meta: return R.meta
     }
+  }
+
+  /// The face each role is set in, by hand: the app's font files. CassetteKitTokensTest holds
+  /// every one to the kit's face and weight.
+  fileprivate var spec: (face: CassetteFace, size: CGFloat) {
+    let face: CassetteFace = switch self {
+    case .heroTitle: .display(.bold)
+    case .sectionTitle: .display(.bold)
+    case .greeting: .display(.semibold)
+    case .rowTitle: .display(.semibold)
+    case .miniTitle: .display(.semibold)
+    case .sectionLabel: .display(.bold)
+    case .cardSubtitle: .mono(.regular)
+    case .metadata: .mono(.medium)
+    case .caption: .mono(.regular)
+    case .body: .system
+    case .navTitle: .display(.semibold)
+    case .largeTitle: .display(.bold)
+    case .tabLabel: .display(.semibold)
+    case .tabLabelSelected: .display(.bold)
+    case .shout: .display(.extraBold)
+    case .pageTitle: .display(.extraBold)
+    case .heroName: .display(.extraBold)
+    case .playerTitle: .display(.extraBold)
+    case .cardTitle: .display(.extraBold)
+    case .tileLabel: .display(.bold)
+    case .pill: .display(.bold)
+    case .answer: .answer
+    case .answerPlayer: .answer
+    case .answerCompact: .answer
+    case .kicker: .mono(.medium)
+    case .meta: .mono(.medium)
+    }
+    return (face, kitRole.size)
   }
 
   /// Letter-spacing in points (the mock's em tracking at this size). 0 for every role that
   /// predates phone-taste.
   public var kern: CGFloat {
-    switch self {
-    case .shout: return 0.13
-    case .pageTitle: return -0.18
-    case .heroName: return -0.23
-    case .pill: return 1.3
-    case .answer: return -0.25
-    case .answerPlayer: return -0.23
-    case .answerCompact: return -0.20
-    case .kicker: return 2.0
-    case .meta: return 1.7
-    default: return 0
-    }
+    kitRole.kern
   }
 
   /// Whether the role is set in capitals (the mock's text-transform: uppercase). False for
   /// every role that predates phone-taste.
   public var isUppercased: Bool {
-    switch self {
-    case .shout, .pageTitle, .heroName, .playerTitle, .cardTitle, .pill, .kicker, .meta:
-      return true
-    default:
-      return false
+    kitRole.upper
+  }
+
+  /// The face's family and weight as the kit names them, for the equality test.
+  public var kitFace: (face: String, weight: Int) {
+    switch spec.face {
+    case let .display(w): return ("Barlow Condensed", w.kitWeight)
+    case let .mono(w): return ("DM Mono", w.kitWeight)
+    case .system: return ("SF Pro", 400)
+    case .answer: return ("New York", 500)
     }
   }
 }
@@ -413,11 +463,11 @@ extension View {
 /// `.textSecondary` on unlit pages, and `CoverTint.text` on pages lit by a record.
 public enum CassetteHeading {
   /// Air above a heading block (the mock's `.block` padding-top).
-  public static let topSpacing: CGFloat = 28
+  public static let topSpacing: CGFloat = CassetteKitTokens.Component.Heading.top
   /// Air between the heading and its row (the mock's `.head` margin-bottom).
-  public static let bottomSpacing: CGFloat = 12
+  public static let bottomSpacing: CGFloat = CassetteKitTokens.Component.Heading.bottom
   /// The heading's side inset (the mock's 20px page gutter).
-  public static let sideInset: CGFloat = 20
+  public static let sideInset: CGFloat = CassetteKitTokens.Component.Heading.side
   /// A table header or section header holding one heading: 28 + one 26pt line + 12.
   public static let tableHeaderHeight: CGFloat = 66
 

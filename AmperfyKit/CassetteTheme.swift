@@ -28,12 +28,12 @@ public enum CassetteTheme {
   // MARK: Spacing
 
   public enum Spacing {
-    public static let xs: CGFloat = 4
-    public static let sm: CGFloat = 8
-    public static let md: CGFloat = 12
-    public static let lg: CGFloat = 16
-    public static let xl: CGFloat = 24
-    public static let xxl: CGFloat = 32
+    public static let xs: CGFloat = CassetteKitTokens.Space.xs
+    public static let sm: CGFloat = CassetteKitTokens.Space.sm
+    public static let md: CGFloat = CassetteKitTokens.Space.md
+    public static let lg: CGFloat = CassetteKitTokens.Space.lg
+    public static let xl: CGFloat = CassetteKitTokens.Space.xl
+    public static let xxl: CGFloat = CassetteKitTokens.Space.xxl
   }
 
   // MARK: Radius

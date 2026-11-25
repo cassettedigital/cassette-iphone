@@ -25,8 +25,8 @@ public enum CassetteKitTokens {
     public static let success: UInt32 = 0x48987A // sage
     public static let warning: UInt32 = 0xD4A020 // amber
     public static let tintNeutral: UInt32 = 0x6B5A44 // CoverTint neutral base
-    public static let tintNeutralGlow: UInt32 = 0xA17236 // CoverTint neutral glow
-    public static let tintNeutralText: UInt32 = 0xD4AE7D // CoverTint neutral text
+    public static let tintNeutralGlow: UInt32 = 0xEDE4D0 // CoverTint neutral glow: the paper's ink (D12)
+    public static let tintNeutralText: UInt32 = 0xEDE4D0 // CoverTint neutral text: the paper's ink (D12)
   }
   /// The same roles on the light paper, for a screen that follows the device's appearance.
   public enum ColorLight {
@@ -48,8 +48,8 @@ public enum CassetteKitTokens {
     public static let success: UInt32 = 0x37745D
     public static let warning: UInt32 = 0x836314
     public static let tintNeutral: UInt32 = 0x6B5A44
-    public static let tintNeutralGlow: UInt32 = 0xA17236
-    public static let tintNeutralText: UInt32 = 0x7A5A2E
+    public static let tintNeutralGlow: UInt32 = 0x15110E
+    public static let tintNeutralText: UInt32 = 0x15110E
   }
   public enum Radius {
     public static let artworkTile: CGFloat = 3
@@ -69,6 +69,7 @@ public enum CassetteKitTokens {
   /// A corner as a share of the side: multiply by the part's width.
   public enum Shape {
     public static let station: CGFloat = 0.18
+    public static let appIcon: CGFloat = 0.22
   }
   public enum Opacity {
     public static let faint: CGFloat = 0.08
@@ -82,6 +83,8 @@ public enum CassetteKitTokens {
     public static let lg: CGFloat = 16
     public static let xl: CGFloat = 24
     public static let xxl: CGFloat = 32
+    /// The one spacing list: every gap is one of these.
+    public static let list: [CGFloat] = [4, 8, 12, 16, 20, 24, 32, 48]
   }
   public struct TypeRole: Sendable { public let face: String; public let weight: Int; public let size: CGFloat; public let kern: CGFloat; public let upper: Bool; public let italic: Bool }
   public enum Roles {
@@ -257,7 +260,79 @@ public enum CassetteKitTokens {
       public static let button = TypeRole(face: "Barlow Condensed", weight: 700, minSize: 16, maxSize: 16, line: 1.05, trackEm: 0.08125, upper: true)
       public static let link = TypeRole(face: "DM Mono", weight: 500, minSize: 12, maxSize: 12, line: 1, trackEm: 0.16, upper: true)
       public static let meta = TypeRole(face: "DM Mono", weight: 500, minSize: 11, maxSize: 11, line: 1.3, trackEm: 0.08, upper: false)
+      public static let poster = TypeRole(face: "Barlow Condensed", weight: 800, minSize: 60, maxSize: 148, line: 0.86, trackEm: 0, upper: true)
+      public static let heroName = TypeRole(face: "Barlow Condensed", weight: 800, minSize: 36, maxSize: 108, line: 0.86, trackEm: 0, upper: true)
+      public static let groupLabel = TypeRole(face: "Barlow Condensed", weight: 700, minSize: 13, maxSize: 13, line: 1.1, trackEm: 0.10769, upper: true)
+      public static let voice = TypeRole(face: "New York", weight: 500, minSize: 25, maxSize: 25, line: 1.1, trackEm: -0.01, upper: false)
+      public static let name = TypeRole(face: "Barlow Condensed", weight: 700, minSize: 21, maxSize: 21, line: 1, trackEm: 0, upper: true)
+      public static let item = TypeRole(face: "New York", weight: 400, minSize: 18, maxSize: 18, line: 1.4, trackEm: 0, upper: false)
+      public static let line = TypeRole(face: "New York", weight: 400, minSize: 15, maxSize: 15, line: 1.45, trackEm: 0, upper: false)
+      public static let figures = TypeRole(face: "DM Mono", weight: 500, minSize: 11, maxSize: 11, line: 1.3, trackEm: 0.08, upper: false)
     }
+  }
+  /// The page's frame (tokens.json `layout`).
+  public enum Layout {
+    public static let frame: CGFloat = 1200
+    public static let edge: CGFloat = 20
+    public static let edgeWide: CGFloat = 32
+    public static let edgeWideFrom: CGFloat = 760
+    public static let rail: CGFloat = 220
+    public static let railMax: CGFloat = 248
+    public static let railFolded: CGFloat = 72
+    public static let railFoldsBelow: CGFloat = 900
+    public static let stickyGap: CGFloat = 16
+    public static let mastRoom: CGFloat = 78
+  }
+  /// The room between things (tokens.json `rhythm`): each held between a least and a most.
+  public enum Rhythm {
+    public static let sectionMin: CGFloat = 40
+    public static let sectionMax: CGFloat = 80
+    public static let shelfMin: CGFloat = 24
+    public static let shelfMax: CGFloat = 32
+    public static let readingMin: CGFloat = 72
+    public static let readingMax: CGFloat = 128
+    public static let underLargeMin: CGFloat = 16
+    public static let underLargeMax: CGFloat = 24
+    public static let underSmallMin: CGFloat = 12
+    public static let underSmallMax: CGFloat = 20
+  }
+  /// How tall anything you press is, by its job, at the phone's density (tokens.json `control`).
+  public enum Control {
+    public static let action: CGFloat = 48
+    public static let head: CGFloat = 48
+    public static let card: CGFloat = 40
+    public static let chip: CGFloat = 36
+    public static let row: CGFloat = 34
+    public static let player: CGFloat = 78
+    public static let touch: CGFloat = 44
+    public static let overCover: CGFloat = 0.75
+    public static let overCoverMax: CGFloat = 64
+    /// A key's words, side room and glyph gap: the display face's capitals at 700 (the website's key, C-rows-model).
+    public static let keyLetters: CGFloat = 16
+    public static let keyTrackEm: CGFloat = 0.08125
+    public static let keyPad: CGFloat = 20
+    public static let keyGap: CGFloat = 12
+  }
+  /// Corners by role at the phone's density (tokens.json `corner`, the founder's D8).
+  public enum Corner {
+    public static let card: CGFloat = 14
+    public static let pictureCard: CGFloat = 18
+    public static let panel: CGFloat = 14
+  }
+  /// How things move (tokens.json `motion`): a curve's four numbers, and durations in seconds.
+  public struct Curve: Sendable { public let x1: Double; public let y1: Double; public let x2: Double; public let y2: Double }
+  public enum Motion {
+    public static let moveCurve = Curve(x1: 0.4, y1: 0, x2: 0.2, y2: 1)
+    public static let glideCurve = Curve(x1: 0.65, y1: 0, x2: 0.35, y2: 1)
+    public static let springCurve = Curve(x1: 0.34, y1: 1.45, x2: 0.64, y2: 1)
+    public static let fadeCurve = Curve(x1: 0.65, y1: 0, x2: 0.35, y2: 1)
+    public static let touchCurve = Curve(x1: 0.1, y1: 0.4, x2: 0, y2: 1)
+    public static let move: Double = 0.3
+    public static let panel: Double = 0.45
+    public static let quick: Double = 0.15
+    public static let glide: Double = 0.9
+    public static let spring: Double = 0.25
+    public static let cover: Double = 0.5
   }
   /// The image ladder (tokens.json `images`): the only sizes Cassette shows a picture at.
   public enum Images {

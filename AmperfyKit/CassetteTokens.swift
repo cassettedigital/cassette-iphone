@@ -134,37 +134,36 @@ extension Color {
 
 // MARK: - CassetteRadius
 
-/// Every corner radius in the app, by what it rounds. The values are today's, unchanged:
-/// consolidating them (for example artwork 3 and 5 into one) is a visual decision, made here
-/// once when it is made. `CassetteTheme.Radius` and Amperfy's `CornerRadius` both resolve to
-/// these.
+/// Every corner radius in the app, by what it rounds: names for the shared kit's numbers
+/// (tokens.json `radius`, generated into CassetteKitTokens.swift; design wave 6), never typed
+/// here. `CassetteTheme.Radius` and Amperfy's `CornerRadius` both resolve to these.
 public enum CassetteRadius {
   /// Album art in carousels, grids and the detail header.
-  public static let artworkTile: CGFloat = 3
+  public static let artworkTile: CGFloat = CassetteKitTokens.Radius.artworkTile
   /// Album art in list rows and the players.
-  public static let artworkRow: CGFloat = 5
+  public static let artworkRow: CGFloat = CassetteKitTokens.Radius.artworkRow
   /// Small controls and chips.
-  public static let small: CGFloat = 4
+  public static let small: CGFloat = CassetteKitTokens.Radius.small
   /// Buttons, fields, the radio dial tiles.
-  public static let control: CGFloat = 8
+  public static let control: CGFloat = CassetteKitTokens.Radius.control
   /// Grouped panels.
-  public static let panel: CGFloat = 12
+  public static let panel: CGFloat = CassetteKitTokens.Radius.panel
   /// Cards and banners (the sync banner, settings cards).
-  public static let card: CGFloat = 14
+  public static let card: CGFloat = CassetteKitTokens.Radius.card
   /// Amperfy's large rounding (popups).
-  public static let large: CGFloat = 15
+  public static let large: CGFloat = CassetteKitTokens.Radius.large
   /// Sheets presented over the app.
-  public static let sheet: CGFloat = 28
+  public static let sheet: CGFloat = CassetteKitTokens.Radius.sheet
   /// Fully round ends (capsules); use with a height under 200pt.
-  public static let pill: CGFloat = 100
+  public static let pill: CGFloat = CassetteKitTokens.Radius.pill
   /// A card lit by its record: the Resume card, the search top result.
-  public static let litCard: CGFloat = 18
+  public static let litCard: CGFloat = CassetteKitTokens.Radius.litCard
   /// A genre tile on Search.
-  public static let genreTile: CGFloat = 10
+  public static let genreTile: CGFloat = CassetteKitTokens.Radius.genreTile
   /// A device icon tile in Settings.
-  public static let iconTile: CGFloat = 9
+  public static let iconTile: CGFloat = CassetteKitTokens.Radius.iconTile
   /// The Now Playing cover.
-  public static let playerArtwork: CGFloat = 8
+  public static let playerArtwork: CGFloat = CassetteKitTokens.Radius.playerArtwork
 
   /// A station's own mark (its logo or its word art), wherever it stands for the station: rounded at
   /// a share of its side, the app icon's shape, so a station never reads as an album (the founder,
@@ -179,14 +178,15 @@ public enum CassetteRadius {
 
 // MARK: - CassetteOpacity
 
-/// The alpha steps the app uses, so "pressed" and "disabled" mean one thing everywhere.
+/// The alpha steps the app uses, so "pressed" and "disabled" mean one thing everywhere: the
+/// shared kit's (tokens.json `opacity`, design wave 6).
 public enum CassetteOpacity {
   /// A barely-there wash, such as a ghost initial or a pressed highlight on dark.
-  public static let faint: CGFloat = 0.08
+  public static let faint: CGFloat = CassetteKitTokens.Opacity.faint
   /// A scrim over content behind a sheet or banner.
-  public static let scrim: CGFloat = 0.5
+  public static let scrim: CGFloat = CassetteKitTokens.Opacity.scrim
   /// A control that cannot be used right now.
-  public static let disabled: CGFloat = 0.4
+  public static let disabled: CGFloat = CassetteKitTokens.Opacity.disabled
 }
 
 // MARK: - CoverTint
