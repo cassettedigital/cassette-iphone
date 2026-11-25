@@ -364,7 +364,7 @@ import SwiftUI
         Task { await model.resync() }
       } label: {
         HStack(spacing: 12) {
-          Text("Resync Library")
+          Text("Resync library")
             .font(.cassette(.rowTitle))
             .foregroundStyle(Color.cassette(.textPrimary))
           Spacer(minLength: 8)
