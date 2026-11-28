@@ -255,6 +255,7 @@ public enum CassetteKitTokens {
       public static let head = TypeRole(face: "Barlow Condensed", weight: 800, minSize: 30, maxSize: 68, line: 0.9, trackEm: -0.01, upper: true)
       public static let headSmall = TypeRole(face: "Barlow Condensed", weight: 800, minSize: 24, maxSize: 36, line: 0.92, trackEm: -0.01, upper: true)
       public static let body = TypeRole(face: "New York", weight: 400, minSize: 17, maxSize: 17, line: 1.5, trackEm: 0, upper: false)
+      public static let reading = TypeRole(face: "New York", weight: 400, minSize: 17, maxSize: 19, line: 1.55, trackEm: 0, upper: false)
       public static let caption = TypeRole(face: "New York", weight: 400, minSize: 15, maxSize: 15, line: 1.45, trackEm: 0, upper: false)
       public static let label = TypeRole(face: "DM Mono", weight: 500, minSize: 11, maxSize: 11, line: 1.3, trackEm: 0.16, upper: true)
       public static let button = TypeRole(face: "Barlow Condensed", weight: 700, minSize: 16, maxSize: 16, line: 1.05, trackEm: 0.08125, upper: true)
@@ -268,6 +269,7 @@ public enum CassetteKitTokens {
       public static let item = TypeRole(face: "New York", weight: 400, minSize: 18, maxSize: 18, line: 1.4, trackEm: 0, upper: false)
       public static let line = TypeRole(face: "New York", weight: 400, minSize: 15, maxSize: 15, line: 1.45, trackEm: 0, upper: false)
       public static let figures = TypeRole(face: "DM Mono", weight: 500, minSize: 11, maxSize: 11, line: 1.3, trackEm: 0.08, upper: false)
+      public static let emphasis = TypeRole(face: "Barlow Condensed", weight: 800, minSize: 34, maxSize: 60, line: 0.9, trackEm: 0, upper: true)
     }
   }
   /// The page's frame (tokens.json `layout`).
@@ -333,6 +335,7 @@ public enum CassetteKitTokens {
     public static let glide: Double = 0.9
     public static let spring: Double = 0.25
     public static let cover: Double = 0.5
+    public static let tutorial: Double = 8
   }
   /// The image ladder (tokens.json `images`): the only sizes Cassette shows a picture at.
   public enum Images {
