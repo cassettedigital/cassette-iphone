@@ -74,6 +74,8 @@ enum SearchRow: Hashable, Sendable {
   case station(String)
   /// An artist, album or song from Cassette's catalog, by `CatalogHit.id`.
   case catalog(String)
+  /// A catalog row's stand-in while the catalog is still answering, by its place.
+  case catalogWaiting(Int)
 }
 
 // MARK: - SearchDiffableDataSource
@@ -177,6 +179,11 @@ class SearchVC: BasicTableViewController {
   /// phone's own pass (I-M9).
   fileprivate var catalog: [CatalogHit] = []
   private var catalogTask: Task<(), Never>?
+  /// The catalog is asked for this query and hasn't answered (BUG-1157): its section holds
+  /// the station page's stand-in rows, and "No results" waits for the answer.
+  private var catalogPending = false
+  /// Stand-in rows the catalog's section holds while it is out.
+  private static let catalogWaitingRows = 3
   private var topResult: SearchTopResult?
   /// The query the shown results were found for (the top card lights its letters).
   private var currentQuery = ""
@@ -262,7 +269,19 @@ class SearchVC: BasicTableViewController {
       stations.map { .station($0.radio.id) },
       toSection: SearchSection.Station.rawValue
     )
-    snapshot.appendItems(catalog.map { .catalog($0.id) }, toSection: SearchSection.Catalog.rawValue)
+    // While the catalog is out its section holds stand-ins the same size as its rows, so its
+    // answer takes their place; "No results" waits for that answer (BUG-1157).
+    if catalogPending {
+      snapshot.appendItems(
+        (0 ..< Self.catalogWaitingRows).map { .catalogWaiting($0) },
+        toSection: SearchSection.Catalog.rawValue
+      )
+    } else {
+      snapshot.appendItems(
+        catalog.map { .catalog($0.id) },
+        toSection: SearchSection.Catalog.rawValue
+      )
+    }
     let previous = dataSource.snapshot()
     let reloads = rebuilt.filter { previous.indexOfItem($0) != nil }
     if !reloads.isEmpty {
@@ -344,7 +363,7 @@ class SearchVC: BasicTableViewController {
       case let .history(item): return item.searchedPlayableContainable
       case let .song(song): return song
       case let .playlist(playlist): return playlist
-      case .top, .albumShelf, .artistShelf, .station, .catalog, .none: return nil
+      case .top, .albumShelf, .artistShelf, .station, .catalog, .catalogWaiting, .none: return nil
       }
     }
     playContextAtIndexPathCallback = { [weak self] indexPath in
@@ -357,7 +376,7 @@ class SearchVC: BasicTableViewController {
         return PlayContext(containable: song)
       case let .playlist(playlist):
         return Self.onPhonePlayContext(playlist)
-      case .top, .albumShelf, .artistShelf, .station, .catalog, .none:
+      case .top, .albumShelf, .artistShelf, .station, .catalog, .catalogWaiting, .none:
         return nil
       }
     }
@@ -505,6 +524,8 @@ class SearchVC: BasicTableViewController {
     case artistShelf
     case station(RadioRow)
     case catalog(CatalogHit)
+    /// A catalog row's stand-in: nothing to open, play or swipe.
+    case catalogWaiting
   }
 
   private func resolvedRow(at indexPath: IndexPath) -> ResolvedRow? {
@@ -526,6 +547,8 @@ class SearchVC: BasicTableViewController {
       return stations.first { $0.radio.id == id }.map { .station($0) }
     case let .catalog(id):
       return catalog.first { $0.id == id }.map { .catalog($0) }
+    case .catalogWaiting:
+      return .catalogWaiting
     case let .entity(objectID):
       switch SearchSection(rawValue: indexPath.section) {
       case .History:
@@ -632,7 +655,7 @@ class SearchVC: BasicTableViewController {
       }
     case let .song(song):
       completionHandler(SwipeActionContext(containable: song))
-    case .top, .albumShelf, .artistShelf, .station, .catalog, .none:
+    case .top, .albumShelf, .artistShelf, .station, .catalog, .catalogWaiting, .none:
       completionHandler(nil)
     }
   }
@@ -716,6 +739,13 @@ class SearchVC: BasicTableViewController {
       ) as! CatalogHitCell
       if let hit = catalog.first(where: { $0.id == id }) { cell.configure(hit) }
       return cell
+    case .catalogWaiting:
+      let cell = tableView.dequeueReusableCell(
+        withIdentifier: CatalogHitCell.reuseIdentifier,
+        for: indexPath
+      ) as! CatalogHitCell
+      cell.configureWaiting()
+      return cell
     case .entity:
       switch resolve(row, at: indexPath) {
       case let .history(history):
@@ -771,7 +801,7 @@ class SearchVC: BasicTableViewController {
     case .Artist: shows = isSearchActive && !artists.isEmpty
     case .Playlist: shows = isSearchActive && !playlists.isEmpty
     case .Station: shows = isSearchActive && !stations.isEmpty
-    case .Catalog: shows = isSearchActive && !catalog.isEmpty
+    case .Catalog: shows = isSearchActive && (catalogPending || !catalog.isEmpty)
     }
     return shows ? CassetteHeading.tableHeaderHeight : 0
   }
@@ -841,7 +871,7 @@ class SearchVC: BasicTableViewController {
       return PlaylistTableCell.rowHeight
     case .station:
       return UITableView.automaticDimension
-    case .catalog:
+    case .catalog, .catalogWaiting:
       return CatalogHitCell.rowHeight
     case .none:
       return 0.0
@@ -884,7 +914,7 @@ class SearchVC: BasicTableViewController {
       }
     case let .catalog(hit):
       open(hit)
-    case .albumShelf, .artistShelf, .none:
+    case .albumShelf, .artistShelf, .catalogWaiting, .none:
       break
     }
     tableView.deselectRow(at: indexPath, animated: true)
@@ -922,8 +952,9 @@ class SearchVC: BasicTableViewController {
     catalogTask?.cancel()
     let trimmed = query.trimmingCharacters(in: .whitespaces)
     guard trimmed.count >= 2 else {
-      if !catalog.isEmpty {
+      if !catalog.isEmpty || catalogPending {
         catalog = []
+        catalogPending = false
         updateDataSource(animated: false)
         updateContentUnavailable()
       }
@@ -932,9 +963,11 @@ class SearchVC: BasicTableViewController {
     catalogTask = Task { @MainActor [weak self] in
       try? await Task.sleep(for: .milliseconds(350))
       guard !Task.isCancelled else { return }
+      // a failed or slow read answers empty (CatalogHit.search), so the stand-ins always give way
       let hits = await CatalogHit.search(trimmed)
       guard let self, !Task.isCancelled, query == searchController.searchBar.text else { return }
       catalog = hits.filter { !isOnPhone($0) }
+      catalogPending = false
       updateDataSource(animated: false)
       updateContentUnavailable()
     }
@@ -1033,6 +1066,9 @@ class SearchVC: BasicTableViewController {
     // 0. Treat anything that isn't the Downloaded scope (index 1) as the default
     // local search (0 OR -1).
     if !searchText.isEmpty, searchController.searchBar.selectedScopeButtonIndex != 1 {
+      // the catalog is asked for every query of two letters or more, after the phone's own pass;
+      // until it answers, nothing says there are no results (BUG-1157)
+      catalogPending = searchText.trimmingCharacters(in: .whitespaces).count >= 2
       if !isOnDeviceOnly {
         Task { @MainActor in do {
           try await self.appDelegate.getMeta(self.account.info).librarySyncer
@@ -1076,10 +1112,16 @@ class SearchVC: BasicTableViewController {
         self.searchCatalog(searchText)
       } catch {
         self.appDelegate.eventLogger.report(topic: "Local Search", error: error, isBackground: true)
+        // the catalog isn't asked after a failed pass, so nothing is on its way
+        self.catalogPending = false
+        self.updateDataSource(animated: false)
         self.updateContentUnavailable()
       }}
     } else if !searchText.isEmpty, searchController.searchBar.selectedScopeButtonIndex == 1 {
-      // Server Mode's Downloaded scope: matching unchanged (each entity's own name).
+      // Server Mode's Downloaded scope: matching unchanged (each entity's own name). The catalog
+      // isn't asked here.
+      catalogTask?.cancel()
+      catalogPending = false
       Task { @MainActor in do {
         let searchResult = try await appDelegate.storage.async.performAndGet { asyncCompanion in
           let accountAsync = asyncCompanion.library.getAccount(managedObjectId: accountObjectId)
@@ -1158,6 +1200,7 @@ class SearchVC: BasicTableViewController {
       stations = []
       catalogTask?.cancel()
       catalog = []
+      catalogPending = false
       topResult = nil
       updateDataSource(animated: false)
       updateContentUnavailable()
@@ -1257,8 +1300,10 @@ class SearchVC: BasicTableViewController {
       relayoutStartView()
     }
     if isSearchActive {
+      // "No results" only once the catalog has answered too (BUG-1157): while it is out,
+      // its section's stand-ins show instead.
       if topResult == nil, artists.isEmpty, albums.isEmpty, playlists.isEmpty, songs.isEmpty,
-         stations.isEmpty, catalog.isEmpty {
+         stations.isEmpty, catalog.isEmpty, !catalogPending {
         // cassette Layer 3 Phase 3.2: in on-device-only mode search is scoped to
         // owned items.
         contentUnavailableConfiguration = CassetteLibraryFilterProvider.shared.isOnDeviceOnly ?
@@ -2371,7 +2416,8 @@ struct CatalogHit: Hashable, Sendable {
 
 // MARK: - CatalogHitCell
 
-/// One catalog match: its picture (a circle for an artist), its name, and what it is.
+/// One catalog match: its picture (a circle for an artist), its name, and what it is. While the
+/// catalog is still answering, the same cell is a stand-in (`configureWaiting`).
 final class CatalogHitCell: UITableViewCell {
   static let reuseIdentifier = "CatalogHitCell"
   static let rowHeight: CGFloat = 48 + 2 * CassetteTheme.Spacing.sm
@@ -2380,6 +2426,10 @@ final class CatalogHitCell: UITableViewCell {
   private let titleLabel = UILabel()
   private let subtitleLabel = UILabel()
   private var represented: String?
+  /// The stand-in's two bars, where the name and what it is will be (the station page's
+  /// waiting row, RadioStationVC.waitingRow).
+  private let titleBar = UIView()
+  private let subtitleBar = UIView()
 
   override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
     super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -2416,6 +2466,22 @@ final class CatalogHitCell: UITableViewCell {
       text.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -m),
       text.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
     ])
+    for (bar, label, width) in [
+      (titleBar, titleLabel, CGFloat(150)),
+      (subtitleBar, subtitleLabel, CGFloat(96)),
+    ] {
+      bar.backgroundColor = .cassette(.surfaceElevated)
+      bar.layer.cornerRadius = 3
+      bar.isHidden = true
+      bar.translatesAutoresizingMaskIntoConstraints = false
+      contentView.addSubview(bar)
+      NSLayoutConstraint.activate([
+        bar.leadingAnchor.constraint(equalTo: label.leadingAnchor),
+        bar.centerYAnchor.constraint(equalTo: label.centerYAnchor),
+        bar.heightAnchor.constraint(equalTo: label.heightAnchor, multiplier: 0.55),
+        bar.widthAnchor.constraint(equalToConstant: width),
+      ])
+    }
   }
 
   @available(*, unavailable)
@@ -2425,9 +2491,33 @@ final class CatalogHitCell: UITableViewCell {
     super.prepareForReuse()
     represented = nil
     art.image = nil
+    showsWaiting(false)
+  }
+
+  /// A row's quiet stand-in while the catalog is still answering: a square and two bars where
+  /// the picture, the name and what it is will be, in the same parts, so it is exactly as tall.
+  func configureWaiting() {
+    represented = nil
+    art.image = nil
+    art.layer.cornerRadius = CassetteRadius.small
+    // a space keeps each line its height under its bar
+    titleLabel.text = " "
+    subtitleLabel.text = " "
+    showsWaiting(true)
+  }
+
+  private func showsWaiting(_ waiting: Bool) {
+    titleBar.isHidden = !waiting
+    subtitleBar.isHidden = !waiting
+    art.backgroundColor = waiting ? .cassette(.surfaceElevated) : CassetteTheme.UIColors.bg3
+    selectionStyle = waiting ? .none : .default
+    isUserInteractionEnabled = !waiting
+    isAccessibilityElement = !waiting
+    accessibilityElementsHidden = waiting
   }
 
   func configure(_ hit: CatalogHit) {
+    showsWaiting(false)
     titleLabel.text = hit.title
     subtitleLabel.text = hit.subtitle
     art.layer.cornerRadius = hit.kind == .artist ? 24 : CassetteRadius.small
