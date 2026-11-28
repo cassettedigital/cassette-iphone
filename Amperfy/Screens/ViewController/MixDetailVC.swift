@@ -396,12 +396,21 @@ final class MixHeroView: UIView {
       label.frame = CGRect(x: Self.gutter, y: y, width: textWidth, height: ceil(height))
       y = label.frame.maxY
     }
-    // R2-head.long-name (the founder's pick, 2026-11-24): the name sits on the foot of a room
-    // three lines tall, so the line, facts and keys hold; past three lines it steps down to the
-    // section heading's voice, then is cut with an ellipsis (as GenericDetailTableHeader does).
-    let room = fitTitle(width: textWidth)
-    let titleHeight = ceil(titleLabel.sizeThatFits(CGSize(width: textWidth, height: room)).height)
-    titleLabel.frame = CGRect(x: Self.gutter, y: y + room - min(room, titleHeight), width: textWidth, height: min(room, titleHeight))
+    // E-record-head (`RecordName`): the name sits on the foot of a room three lines tall, so the
+    // line, facts and keys hold; past three lines it steps down to the section heading's voice,
+    // then wraps for every line it needs and the room grows. Never cut.
+    let fit = fitTitle(width: textWidth)
+    let titleHeight = ceil(titleLabel.sizeThatFits(CGSize(
+      width: textWidth,
+      height: .greatestFiniteMagnitude
+    )).height)
+    let room = max(fit.room, titleHeight)
+    titleLabel.frame = CGRect(
+      x: Self.gutter,
+      y: y + room - titleHeight,
+      width: textWidth,
+      height: titleHeight
+    )
     y += room
     if !answerLabel.isHidden {
       y += 6
@@ -421,30 +430,14 @@ final class MixHeroView: UIView {
     return height
   }
 
-  /// Sets the name for `width` and returns its room's height (three page-title lines).
-  private func fitTitle(width: CGFloat) -> CGFloat {
+  /// Sets the name for `width` (the page-title voice, or its floor) and returns its fit.
+  private func fitTitle(width: CGFloat) -> RecordName.Fit {
     let ink = UIColor.cassette(.textPrimary)
-    func set(_ style: CassetteTextStyle, _ text: String) -> NSAttributedString {
-      NSAttributedString.cassette(text, style, color: ink, uppercase: true)
+    let fit = RecordName.fit(mix.title, voice: .pageTitle, width: width) { style, words in
+      NSAttributedString.cassette(words, style, color: ink, uppercase: true)
     }
-    func height(_ text: NSAttributedString) -> CGFloat {
-      ceil(text.boundingRect(
-        with: CGSize(width: width, height: .greatestFiniteMagnitude),
-        options: [.usesLineFragmentOrigin, .usesFontLeading],
-        context: nil
-      ).height)
-    }
-    let room = height(set(.pageTitle, "A\nA\nA"))
-    let whole = set(.pageTitle, mix.title)
-    if height(whole) <= room + 1 {
-      titleLabel.attributedText = whole
-      titleLabel.numberOfLines = 3
-    } else {
-      titleLabel.attributedText = set(.shout, mix.title)
-      titleLabel.numberOfLines = max(1, Int(room / height(set(.shout, "A"))))
-    }
-    titleLabel.lineBreakMode = .byTruncatingTail
-    return room
+    RecordName.show(fit, in: titleLabel)
+    return fit
   }
 
   /// The record's colour and glow (`DetailCoverLighter`).

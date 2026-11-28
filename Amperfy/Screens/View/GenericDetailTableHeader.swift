@@ -22,6 +22,60 @@
 import AmperfyKit
 import UIKit
 
+// MARK: - RecordName
+
+/// A record's name on its own page (E-record-head: the founder's "B. Grows up", 2026-11-24, and
+/// "No matter how long an album name is, we should always print it in full", 2026-11-27). The
+/// album, playlist, mix and artist heads fit their name here (a station's name wraps in full under
+/// its cover, as the website's station page does: no room, never cut).
+///
+/// The name sits on the foot of a room three of its lines tall, so what's under it stays in one
+/// place from record to record and extra lines climb. A name that needs more than three lines
+/// steps down to the section heading's voice (the shout), its floor. Past that it wraps for every
+/// line it needs and the room grows with it: never an ellipsis on a record's own page. Shelves and
+/// grids still cut a long name to their lines.
+enum RecordName {
+  struct Fit {
+    /// The name, in its voice or at the floor.
+    let text: NSAttributedString
+    /// Three lines of the voice, or every line the name needs at the floor, whichever is taller.
+    let room: CGFloat
+  }
+
+  /// Fits `name` to `width`; `set` draws words in a voice, with the caller's colour, line height
+  /// and alignment.
+  static func fit(
+    _ name: String,
+    voice: CassetteTextStyle,
+    width: CGFloat,
+    set: (CassetteTextStyle, String) -> NSAttributedString
+  )
+    -> Fit {
+    func height(_ text: NSAttributedString) -> CGFloat {
+      ceil(text.boundingRect(
+        with: CGSize(width: width, height: .greatestFiniteMagnitude),
+        options: [.usesLineFragmentOrigin, .usesFontLeading],
+        context: nil
+      ).height)
+    }
+    let room = height(set(voice, "A\nA\nA"))
+    let whole = set(voice, name)
+    if height(whole) <= room + 1 {
+      return Fit(text: whole, room: room)
+    }
+    let floor = set(.shout, name)
+    return Fit(text: floor, room: max(room, height(floor)))
+  }
+
+  /// Shows a fitted name in `label`: every line, wrapped at words, never cut.
+  static func show(_ fit: Fit, in label: UILabel) {
+    label.attributedText = fit.text
+    label.numberOfLines = 0
+    // after the text, so the label's own mode rules every line
+    label.lineBreakMode = .byWordWrapping
+  }
+}
+
 // MARK: - DetailHeroStyle
 
 /// How a detail header draws its hero (phone-taste record pages). Every style is compact
@@ -285,6 +339,8 @@ class GenericDetailTableHeader: UIView {
     label.numberOfLines = 2
     label.lineBreakMode = .byTruncatingTail
     label.setContentCompressionResistancePriority(.required, for: .vertical)
+    // its own height, never stretched: in the name's room it sits on the foot (E-record-head)
+    label.setContentHuggingPriority(UILayoutPriority(999), for: .vertical)
     return label
   }()
 
@@ -604,7 +660,8 @@ class GenericDetailTableHeader: UIView {
     titleRoom.addSubview(titleLabel)
     let hug = titleLabel.topAnchor.constraint(equalTo: titleRoom.topAnchor)
     hug.priority = .defaultLow
-    let room = titleRoom.heightAnchor.constraint(equalToConstant: 0)
+    // at least the room: a name that needs more lines than its room grows it (E-record-head)
+    let room = titleRoom.heightAnchor.constraint(greaterThanOrEqualToConstant: 0)
     room.priority = UILayoutPriority(999)
     titleRoomHeight = room
     NSLayoutConstraint.activate([
@@ -1029,6 +1086,8 @@ class GenericDetailTableHeader: UIView {
       titleLabel.textColor = UIColor.cassette(.textPrimary)
       titleLabel.text = name
       titleLabel.numberOfLines = 2
+      titleLabel.lineBreakMode = .byTruncatingTail
+      titleLabel.preferredMaxLayoutWidth = 0
       titleLabel.adjustsFontSizeToFitWidth = false
       titleLabel.accessibilityLabel = nil
       titleLabel.layer.shadowOpacity = 0
@@ -1063,37 +1122,21 @@ class GenericDetailTableHeader: UIView {
   /// The width the lit head's name was last fitted to.
   private var lastRoomWidth: CGFloat = 0
 
-  /// R2-head.long-name: the name in its page-title voice, sat on the foot of a three-line room;
-  /// a name that needs more steps down to the section heading's voice (the shout) and, past
-  /// that, is cut with an ellipsis on its last line, whole for VoiceOver. Never cut silently.
+  /// E-record-head (`RecordName`): the name in its voice on the foot of a three-line room; past
+  /// that at the section heading's voice, its floor, on every line it needs, the room growing
+  /// with it. Never cut.
   private func fitRoomTitle(width: CGFloat) {
     guard let name = roomName, width > 0 else { return }
     lastRoomWidth = width
     let ink = UIColor.cassette(.textPrimary)
-    func set(_ style: CassetteTextStyle, _ text: String) -> NSAttributedString {
-      NSAttributedString.cassette(text, style, color: ink, lineHeightMultiple: roomLineHeight)
+    let lineHeight = roomLineHeight
+    let fit = RecordName.fit(name, voice: roomStyle, width: width) { style, words in
+      NSAttributedString.cassette(words, style, color: ink, lineHeightMultiple: lineHeight)
     }
-    func height(_ text: NSAttributedString) -> CGFloat {
-      ceil(text.boundingRect(
-        with: CGSize(width: width, height: .greatestFiniteMagnitude),
-        options: [.usesLineFragmentOrigin, .usesFontLeading],
-        context: nil
-      ).height)
-    }
-    let room = height(set(roomStyle, "A\nA\nA"))
-    let whole = set(roomStyle, name)
-    if height(whole) <= room + 1 {
-      titleLabel.attributedText = whole
-      titleLabel.numberOfLines = 3
-    } else {
-      let line = height(set(.shout, "A"))
-      titleLabel.attributedText = set(.shout, name)
-      titleLabel.numberOfLines = max(1, Int(room / line))
-    }
-    // after the text: the label's own mode then rules the last line (an attributed string's
-    // paragraph style would otherwise wrap it away silently)
-    titleLabel.lineBreakMode = .byTruncatingTail
-    titleRoomHeight?.constant = room
+    RecordName.show(fit, in: titleLabel)
+    // the label's own height comes from this width too, so the room can only ever grow to it
+    titleLabel.preferredMaxLayoutWidth = width
+    titleRoomHeight?.constant = fit.room
     titleRoomHeight?.isActive = true
   }
 
